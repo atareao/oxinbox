@@ -1,9 +1,18 @@
 # Changelog
+## [0.1.9] - 2026-07-05
+
+### Bug Fixes
+
+- Use C.UTF-8 locale for PostgreSQL in docker-compose files (#8)
 ## [0.1.8] - 2026-07-05
 
 ### Bug Fixes
 
 - Fix release sync to development branch (#13)
+
+### Miscellaneous Tasks
+
+- Release v0.1.8
 ## [0.1.7] - 2026-07-05
 
 ### Bug Fixes
