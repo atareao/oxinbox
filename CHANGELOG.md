@@ -1,9 +1,18 @@
 # Changelog
+## [0.1.11] - 2026-07-05
+
+### Bug Fixes
+
+- Address clippy warnings in frontend_fallback (#15)
 ## [0.1.10] - 2026-07-05
 
 ### Bug Fixes
 
 - Build frontend WASM in Dockerfile and CI pipeline (#14)
+
+### Miscellaneous Tasks
+
+- Release v0.1.10
 ## [0.1.9] - 2026-07-05
 
 ### Bug Fixes
