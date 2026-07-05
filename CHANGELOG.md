@@ -1,10 +1,19 @@
 # Changelog
+## [0.1.3] - 2026-07-05
+
+### Bug Fixes
+
+- Remove --locked flag from release builds
 ## [0.1.2] - 2026-07-05
 
 ### Bug Fixes
 
 - Update Cargo.lock for --locked builds
 - Read version from backend/.vampus.yml in release workflow
+
+### Miscellaneous Tasks
+
+- Release v0.1.2
 ## [0.1.0] - 2026-07-05
 
 ### Bug Fixes
