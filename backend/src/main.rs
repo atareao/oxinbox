@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
 use axum::{
+    Router,
     body::Body,
     extract::Request,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Router,
 };
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
@@ -72,20 +72,14 @@ async fn main() {
 
     push::start_background_worker(auth_state.clone());
 
-    let frontend_dir = std::env::var("FRONTEND_DIR")
-        .unwrap_or_else(|_| "frontend/dist".into());
+    let frontend_dir = std::env::var("FRONTEND_DIR").unwrap_or_else(|_| "frontend/dist".into());
     let frontend_path: PathBuf = frontend_dir.into();
     let frontend_path2 = frontend_path.clone();
 
     let app = Router::new()
         .merge(routes::api_routes(&auth_state))
-        .nest_service(
-            "/assets",
-            ServeDir::new(frontend_path.join("assets")),
-        )
-        .fallback(move |req: Request<Body>| {
-            frontend_fallback(req, frontend_path2.clone())
-        })
+        .nest_service("/assets", ServeDir::new(frontend_path.join("assets")))
+        .fallback(move |req: Request<Body>| frontend_fallback(req, frontend_path2.clone()))
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
         .with_state(auth_state);
@@ -110,10 +104,7 @@ async fn frontend_fallback(req: Request<Body>, frontend_path: PathBuf) -> Respon
             Ok(d) => d,
             Err(_) => return (StatusCode::NOT_FOUND, "Not Found").into_response(),
         };
-        let ext = file_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+        let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
         let mime = match ext {
             "css" => "text/css; charset=utf-8",
             "js" => "application/javascript; charset=utf-8",
