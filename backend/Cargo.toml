@@ -2,6 +2,9 @@
 name = "oxinbox-backend"
 version = "0.1.0"
 edition = "2024"
+description = "HTTP/WS API server for the oxinbox GTD productivity system"
+license = "MIT"
+repository = "https://github.com/atareao/oxinbox"
 
 [lints]
 workspace = true
@@ -15,7 +18,7 @@ name = "oxinbox-backend"
 path = "src/main.rs"
 
 [dependencies]
-oxinbox-core = { path = "../core" }
+oxinbox-core = { path = "../core", version = "0.1.0" }
 axum = { version = "0.7", features = ["multipart", "ws"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "migrate", "chrono", "uuid"] }

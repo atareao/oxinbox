@@ -2,6 +2,9 @@
 name = "oxinbox-core"
 version = "0.1.0"
 edition = "2024"
+description = "Shared data types for the oxinbox GTD productivity system"
+license = "MIT"
+repository = "https://github.com/atareao/oxinbox"
 
 [lints]
 workspace = true
