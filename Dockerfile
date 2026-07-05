@@ -50,6 +50,7 @@ ENV USER=app \
 
 RUN apk add --update --no-cache \
     ca-certificates \
+    wget \
     && rm -rf /var/cache/apk && \
     adduser \
         --disabled-password \
