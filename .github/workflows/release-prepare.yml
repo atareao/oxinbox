@@ -43,7 +43,7 @@ jobs:
       - name: Get new version
         id: version
         run: |
-          V=$(grep '^current_version' .vampus.yml | sed 's/.*: *//')
+          V=$(grep '^current_version' backend/.vampus.yml | sed 's/.*: *//')
           echo "value=$V" >> "$GITHUB_OUTPUT"
       - name: Generate changelog
         run: git-cliff -o CHANGELOG.md --tag "v${{ steps.version.outputs.value }}"
