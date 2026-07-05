@@ -1,6 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS pgvector;
-CREATE EXTENSION IF NOT EXISTS paradedb;
+CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
@@ -41,7 +40,7 @@ CREATE TABLE task_history (
     changed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
-CREATE INDEX idx_tasks_bm25 ON tasks USING prdb (description, projects, contexts);
+CREATE INDEX idx_tasks_bm25 ON tasks USING bm25 (id, description, projects, contexts) WITH (key_field='id');
 CREATE INDEX idx_tasks_embedding ON tasks USING hnsw (embedding vector_cosine_ops);
 
 CREATE OR REPLACE FUNCTION process_task_modifications()

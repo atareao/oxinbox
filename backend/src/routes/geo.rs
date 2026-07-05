@@ -1,5 +1,5 @@
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 use serde::Deserialize;
 use tracing::instrument;
 
@@ -55,11 +55,17 @@ pub async fn update_location(
 
         if !matching.is_empty() {
             let body = if matching.len() == 1 {
-                format!("Tienes \"{}\" pendiente en @{zone}", matching[0].description)
+                format!(
+                    "Tienes \"{}\" pendiente en @{zone}",
+                    matching[0].description
+                )
             } else {
                 format!("Tienes {} tareas pendientes en @{zone}", matching.len())
             };
-            state.push.notify_user(0, "oxinbox — Cerca de zona", &body).await;
+            state
+                .push
+                .notify_user(0, "oxinbox — Cerca de zona", &body)
+                .await;
         }
     }
 
