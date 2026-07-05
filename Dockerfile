@@ -18,10 +18,12 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY core/Cargo.toml core/
 COPY backend/Cargo.toml backend/
+COPY frontend/Cargo.toml frontend/
 
-RUN mkdir -p core/src backend/src && \
+RUN mkdir -p core/src backend/src frontend/src && \
     echo "fn main() {}" > backend/src/main.rs && \
-    echo "" > core/src/lib.rs
+    echo "" > core/src/lib.rs && \
+    echo "" > frontend/src/lib.rs
 RUN cargo build --release -p oxinbox-backend 2>/dev/null; true
 
 # Real source
