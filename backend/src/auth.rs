@@ -35,7 +35,10 @@ impl AuthState {
         let rp_origin = Url::parse(&rp_origin_str).expect("invalid RP_ORIGIN");
 
         let rp_id = std::env::var("RP_ID").unwrap_or_else(|_| {
-            rp_origin.host_str().expect("RP_ORIGIN must have a host").into()
+            rp_origin
+                .host_str()
+                .expect("RP_ORIGIN must have a host")
+                .into()
         });
 
         tracing::debug!(%rp_id, %rp_origin_str, "configuring WebAuthn");
