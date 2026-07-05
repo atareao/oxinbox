@@ -1,4 +1,10 @@
 # Changelog
+## [0.1.2] - 2026-07-05
+
+### Bug Fixes
+
+- Update Cargo.lock for --locked builds
+- Read version from backend/.vampus.yml in release workflow
 ## [0.1.0] - 2026-07-05
 
 ### Bug Fixes
@@ -25,6 +31,7 @@
 - Add workflow_dispatch to release.yml
 - Add rustfmt and clippy components in toolchain setup
 - Add rustfmt and clippy to rust-toolchain.toml components
+- Release v0.1.0
 
 ### Refactor
 
