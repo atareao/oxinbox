@@ -1,9 +1,18 @@
 # Changelog
+## [0.1.4] - 2026-07-05
+
+### Bug Fixes
+
+- Add wget to Docker image for health check (#9)
 ## [0.1.3] - 2026-07-05
 
 ### Bug Fixes
 
 - Remove --locked flag from release builds
+
+### Miscellaneous Tasks
+
+- Release v0.1.3
 ## [0.1.2] - 2026-07-05
 
 ### Bug Fixes
