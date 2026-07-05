@@ -6,8 +6,8 @@ services:
       POSTGRES_USER: oxinbox
       POSTGRES_PASSWORD: ${DB_PASSWORD:?error}
       POSTGRES_DB: oxinbox
-      POSTGRES_INITDB_ARGS: "--locale=es_ES.utf8 --encoding=UTF8"
-      LANG: es_ES.utf8
+      POSTGRES_INITDB_ARGS: "--locale=C.UTF-8 --encoding=UTF8"
+      LANG: C.UTF-8
       TZ: Europe/Madrid
     volumes:
       - pgdata:/var/lib/postgresql/data
