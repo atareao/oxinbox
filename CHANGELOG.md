@@ -1,9 +1,18 @@
 # Changelog
+## [0.1.6] - 2026-07-05
+
+### Bug Fixes
+
+- Serve frontend static files from backend (#11)
 ## [0.1.5] - 2026-07-05
 
 ### Bug Fixes
 
 - Fix rustfmt formatting in auth.rs (#10)
+
+### Miscellaneous Tasks
+
+- Release v0.1.5
 ## [0.1.4] - 2026-07-05
 
 ### Bug Fixes
