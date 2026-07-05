@@ -44,8 +44,8 @@ pub fn create_provider() -> Result<Arc<dyn AiProvider>, AiError> {
     let provider = std::env::var("AI_PROVIDER").unwrap_or_else(|_| "openrouter".into());
     match provider.as_str() {
         "openai" | "openrouter" => {
-            let base_url =
-                std::env::var("AI_BASE_URL").unwrap_or_else(|_| "https://openrouter.ai/api/v1".into());
+            let base_url = std::env::var("AI_BASE_URL")
+                .unwrap_or_else(|_| "https://openrouter.ai/api/v1".into());
             let api_key = std::env::var("AI_API_KEY")
                 .or_else(|_| std::env::var("OPENAI_API_KEY"))
                 .or_else(|_| std::env::var("OPENROUTER_API_KEY"))
@@ -54,11 +54,12 @@ pub fn create_provider() -> Result<Arc<dyn AiProvider>, AiError> {
                         "set AI_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY".into(),
                     )
                 })?;
-            let model = std::env::var("AI_MODEL").unwrap_or_else(|_| "deepseek/deepseek-v4-flash".into());
-            let embedding_model = std::env::var("AI_EMBEDDING_MODEL")
-                .unwrap_or_else(|_| "baai/bge-m3".into());
-            let whisper_model =
-                std::env::var("AI_WHISPER_MODEL").unwrap_or_else(|_| "qwen/qwen3-asr-flash-2026-02-10".into());
+            let model =
+                std::env::var("AI_MODEL").unwrap_or_else(|_| "deepseek/deepseek-v4-flash".into());
+            let embedding_model =
+                std::env::var("AI_EMBEDDING_MODEL").unwrap_or_else(|_| "baai/bge-m3".into());
+            let whisper_model = std::env::var("AI_WHISPER_MODEL")
+                .unwrap_or_else(|_| "qwen/qwen3-asr-flash-2026-02-10".into());
 
             let client =
                 OpenAiProvider::new(base_url, api_key, model, embedding_model, whisper_model);

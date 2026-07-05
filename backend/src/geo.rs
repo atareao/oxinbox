@@ -28,11 +28,14 @@ pub struct GeoService {
 
 impl GeoService {
     pub fn new() -> Self {
-        let zones = std::env::var("GEO_ZONES").ok().and_then(|json| {
-            serde_json::from_str::<Vec<ContextZone>>(&json)
-                .map_err(|e| tracing::warn!("GEO_ZONES parse error: {e}"))
-                .ok()
-        }).unwrap_or_default();
+        let zones = std::env::var("GEO_ZONES")
+            .ok()
+            .and_then(|json| {
+                serde_json::from_str::<Vec<ContextZone>>(&json)
+                    .map_err(|e| tracing::warn!("GEO_ZONES parse error: {e}"))
+                    .ok()
+            })
+            .unwrap_or_default();
 
         let zone_map = zones.into_iter().map(|z| (z.name.clone(), z)).collect();
 

@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::instrument;
 use web_push::{
-    ContentEncoding, IsahcWebPushClient, SubscriptionInfo, VapidSignatureBuilder,
-    WebPushClient, WebPushMessageBuilder, WebPushError,
+    ContentEncoding, IsahcWebPushClient, SubscriptionInfo, VapidSignatureBuilder, WebPushClient,
+    WebPushError, WebPushMessageBuilder,
 };
 
 use crate::auth::AuthState;
@@ -119,7 +119,12 @@ impl PushService {
                 Ok(()) => tracing::debug!("push sent to {}", sub.endpoint),
                 Err(WebPushError::EndpointNotValid(_)) => {
                     tracing::warn!("subscription expired, removing");
-                    self.subscriptions.write().await.entry(user_id).or_default().retain(|s| s.endpoint != sub.endpoint);
+                    self.subscriptions
+                        .write()
+                        .await
+                        .entry(user_id)
+                        .or_default()
+                        .retain(|s| s.endpoint != sub.endpoint);
                 }
                 Err(WebPushError::ServerError { retry_after, .. }) => {
                     tracing::warn!("push service overloaded, retry after {:?}", retry_after);
@@ -164,9 +169,15 @@ pub fn start_background_worker(task_state: AuthState) {
 
             tracing::info!(count = stale.len(), "found stale inbox tasks");
             let msg = if stale.len() == 1 {
-                format!("Tienes 1 nota en el Inbox desde hace más de 24h: \"{}\"", stale[0].description)
+                format!(
+                    "Tienes 1 nota en el Inbox desde hace más de 24h: \"{}\"",
+                    stale[0].description
+                )
             } else {
-                format!("Tienes {} notas en el Inbox desde hace más de 24h. ¿Las clasificamos?", stale.len())
+                format!(
+                    "Tienes {} notas en el Inbox desde hace más de 24h. ¿Las clasificamos?",
+                    stale.len()
+                )
             };
 
             let push = PushService::new();
