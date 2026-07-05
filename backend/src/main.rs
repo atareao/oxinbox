@@ -1,5 +1,14 @@
-use axum::Router;
+use std::path::PathBuf;
+
+use axum::{
+    body::Body,
+    extract::Request,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Router,
+};
 use tower_http::cors::CorsLayer;
+use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
@@ -63,8 +72,20 @@ async fn main() {
 
     push::start_background_worker(auth_state.clone());
 
+    let frontend_dir = std::env::var("FRONTEND_DIR")
+        .unwrap_or_else(|_| "frontend/dist".into());
+    let frontend_path: PathBuf = frontend_dir.into();
+    let frontend_path2 = frontend_path.clone();
+
     let app = Router::new()
         .merge(routes::api_routes(&auth_state))
+        .nest_service(
+            "/assets",
+            ServeDir::new(frontend_path.join("assets")),
+        )
+        .fallback(move |req: Request<Body>| {
+            frontend_fallback(req, frontend_path2.clone())
+        })
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
         .with_state(auth_state);
@@ -78,4 +99,44 @@ async fn main() {
     tracing::info!("listening on {}", listener.local_addr().unwrap());
 
     axum::serve(listener, app).await.expect("server error");
+}
+
+async fn frontend_fallback(req: Request<Body>, frontend_path: PathBuf) -> Response {
+    let path = req.uri().path().trim_start_matches('/');
+
+    let file_path = frontend_path.join(path);
+    if file_path.exists() && file_path.is_file() {
+        let data = match tokio::fs::read(&file_path).await {
+            Ok(d) => d,
+            Err(_) => return (StatusCode::NOT_FOUND, "Not Found").into_response(),
+        };
+        let ext = file_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        let mime = match ext {
+            "css" => "text/css; charset=utf-8",
+            "js" => "application/javascript; charset=utf-8",
+            "json" => "application/json",
+            "png" => "image/png",
+            "svg" => "image/svg+xml",
+            "ico" => "image/x-icon",
+            "wasm" => "application/wasm",
+            "html" => "text/html; charset=utf-8",
+            _ => "application/octet-stream",
+        };
+        return Response::builder()
+            .header("content-type", mime)
+            .body(Body::from(data))
+            .unwrap_or_else(|_| (StatusCode::NOT_FOUND, "Not Found").into_response());
+    }
+
+    let index_path = frontend_path.join("index.html");
+    match tokio::fs::read_to_string(&index_path).await {
+        Ok(html) => Response::builder()
+            .header("content-type", "text/html; charset=utf-8")
+            .body(Body::from(html))
+            .unwrap_or_else(|_| (StatusCode::NOT_FOUND, "Not Found").into_response()),
+        Err(_) => (StatusCode::NOT_FOUND, "Not Found").into_response(),
+    }
 }
