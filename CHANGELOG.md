@@ -1,9 +1,18 @@
 # Changelog
+## [0.1.7] - 2026-07-05
+
+### Bug Fixes
+
+- Fix rustfmt formatting in main.rs (#12)
 ## [0.1.6] - 2026-07-05
 
 ### Bug Fixes
 
 - Serve frontend static files from backend (#11)
+
+### Miscellaneous Tasks
+
+- Release v0.1.6
 ## [0.1.5] - 2026-07-05
 
 ### Bug Fixes
