@@ -7,6 +7,9 @@ services:
       POSTGRES_USER: oxinbox
       POSTGRES_PASSWORD: oxinbox_dev
       POSTGRES_DB: oxinbox
+      POSTGRES_INITDB_ARGS: "--locale=es_ES.utf8 --encoding=UTF8"
+      LANG: es_ES.utf8
+      TZ: Europe/Madrid
     ports:
       - "5432:5432"
     volumes:
@@ -34,6 +37,7 @@ services:
       AI_EMBEDDING_MODEL: ${AI_EMBEDDING_MODEL:-baai/bge-m3}
       AI_WHISPER_MODEL: ${AI_WHISPER_MODEL:-qwen/qwen3-asr-flash-2026-02-10}
       RUST_LOG: info
+      TZ: Europe/Madrid
     depends_on:
       db:
         condition: service_healthy
