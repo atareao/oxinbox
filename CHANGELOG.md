@@ -1,9 +1,18 @@
 # Changelog
+## [0.1.10] - 2026-07-05
+
+### Bug Fixes
+
+- Build frontend WASM in Dockerfile and CI pipeline (#14)
 ## [0.1.9] - 2026-07-05
 
 ### Bug Fixes
 
 - Use C.UTF-8 locale for PostgreSQL in docker-compose files (#8)
+
+### Miscellaneous Tasks
+
+- Release v0.1.9
 ## [0.1.8] - 2026-07-05
 
 ### Bug Fixes
