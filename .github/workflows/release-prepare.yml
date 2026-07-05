@@ -39,7 +39,7 @@ jobs:
             echo "type=--patch" >> "$GITHUB_OUTPUT"
           fi
       - name: Bump version with vampus
-        run: vampus upgrade ${{ steps.bump.outputs.type }}
+        run: cd backend && vampus upgrade ${{ steps.bump.outputs.type }}
       - name: Get new version
         id: version
         run: |
