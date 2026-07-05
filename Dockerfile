@@ -37,7 +37,7 @@ ENV OPENSSL_LIB_DIR=/usr/lib \
     OPENSSL_STATIC=1 \
     SQLX_OFFLINE=true
 
-RUN cargo build --release --locked -p oxinbox-backend && \
+RUN cargo build --release -p oxinbox-backend && \
     strip target/release/oxinbox-backend
 
 ###############################################################################
