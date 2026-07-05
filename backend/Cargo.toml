@@ -1,6 +1,6 @@
 [package]
 name = "oxinbox-backend"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 description = "HTTP/WS API server for the oxinbox GTD productivity system"
 license = "MIT"
@@ -20,9 +20,9 @@ path = "src/main.rs"
 [dependencies]
 oxinbox-core = { path = "../core", version = "0.1.0" }
 axum = { version = "0.7", features = ["multipart", "ws"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "fs"] }
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "migrate", "chrono", "uuid"] }
-tower-http = { version = "0.6", features = ["cors", "trace"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 serde = { workspace = true }

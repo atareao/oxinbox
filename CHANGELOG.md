@@ -1,9 +1,18 @@
 # Changelog
+## [0.1.5] - 2026-07-05
+
+### Bug Fixes
+
+- Fix rustfmt formatting in auth.rs (#10)
 ## [0.1.4] - 2026-07-05
 
 ### Bug Fixes
 
 - Add wget to Docker image for health check (#9)
+
+### Miscellaneous Tasks
+
+- Release v0.1.4
 ## [0.1.3] - 2026-07-05
 
 ### Bug Fixes
