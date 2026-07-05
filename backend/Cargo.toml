@@ -1,6 +1,6 @@
 [package]
 name = "oxinbox-backend"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2024"
 description = "HTTP/WS API server for the oxinbox GTD productivity system"
 license = "MIT"
