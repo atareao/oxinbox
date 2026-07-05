@@ -100,9 +100,8 @@ async fn frontend_fallback(req: Request<Body>, frontend_path: PathBuf) -> Respon
 
     let file_path = frontend_path.join(path);
     if file_path.exists() && file_path.is_file() {
-        let data = match tokio::fs::read(&file_path).await {
-            Ok(d) => d,
-            Err(_) => return (StatusCode::NOT_FOUND, "Not Found").into_response(),
+        let Ok(data) = tokio::fs::read(&file_path).await else {
+            return (StatusCode::NOT_FOUND, "Not Found").into_response();
         };
         let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
         let mime = match ext {
@@ -123,11 +122,13 @@ async fn frontend_fallback(req: Request<Body>, frontend_path: PathBuf) -> Respon
     }
 
     let index_path = frontend_path.join("index.html");
-    match tokio::fs::read_to_string(&index_path).await {
-        Ok(html) => Response::builder()
-            .header("content-type", "text/html; charset=utf-8")
-            .body(Body::from(html))
-            .unwrap_or_else(|_| (StatusCode::NOT_FOUND, "Not Found").into_response()),
-        Err(_) => (StatusCode::NOT_FOUND, "Not Found").into_response(),
-    }
+    tokio::fs::read_to_string(&index_path).await.map_or_else(
+        |_| (StatusCode::NOT_FOUND, "Not Found").into_response(),
+        |html| {
+            Response::builder()
+                .header("content-type", "text/html; charset=utf-8")
+                .body(Body::from(html))
+                .unwrap_or_else(|_| (StatusCode::NOT_FOUND, "Not Found").into_response())
+        },
+    )
 }
