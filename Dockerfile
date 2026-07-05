@@ -7,8 +7,10 @@ RUN apk add --update --no-cache \
     gcc \
     make \
     musl-dev \
+    musl-utils \
     openssl \
     openssl-dev \
+    openssl-libs-static \
     pkgconfig \
     && rm -rf /var/cache/apk
 
