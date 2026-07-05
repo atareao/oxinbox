@@ -1,0 +1,15 @@
+[application]
+name = "oxinbox"
+default_platform = "web"
+
+[web]
+base_path = "/"
+title = "oxinbox"
+app_manifests = ["public/manifest.json"]
+
+[web.watcher]
+watch_path = ["src", "public"]
+
+[web.resources]
+style = ["public/styles.css"]
+script = ["public/sw.js"]

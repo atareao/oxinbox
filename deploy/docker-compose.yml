@@ -1,0 +1,40 @@
+services:
+  db:
+    image: paradedb/paradedb:latest
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: oxinbox
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?error}
+      POSTGRES_DB: oxinbox
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oxinbox"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ghcr.io/${GITHUB_REPOSITORY:-tu-usuario/oxinbox}:latest
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3300}:3300"
+    environment:
+      DATABASE_URL: "postgres://oxinbox:${DB_PASSWORD:?error}@db:5432/oxinbox"
+      RP_ID: ${RP_ID:?error}
+      RP_ORIGIN: ${RP_ORIGIN:?error}
+      PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
+      PUSH_VAPID_PUBLIC_KEY: ${PUSH_VAPID_PUBLIC_KEY:-}
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_EMBEDDING_MODEL: ${AI_EMBEDDING_MODEL:-}
+      AI_WHISPER_MODEL: ${AI_WHISPER_MODEL:-}
+      HOST: "0.0.0.0"
+      RUST_LOG: ${RUST_LOG:-info}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

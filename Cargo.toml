@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = [
+    "core",
+    "backend",
+    "frontend",
+]
+
+[workspace.package]
+edition = "2024"
+
+[workspace.lints.clippy]
+pedantic = "warn"
+nursery = "warn"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.10", features = ["v7", "serde"] }

@@ -1,0 +1,18 @@
+[package]
+name = "oxinbox-core"
+version = "0.1.0"
+edition = "2024"
+
+[lints]
+workspace = true
+
+[lib]
+name = "oxinbox_core"
+
+[dependencies]
+serde.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+serde_json = "1"
