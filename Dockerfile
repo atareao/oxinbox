@@ -62,6 +62,8 @@ RUN apk add --update --no-cache \
 
 COPY --from=builder /app/target/release/oxinbox-backend /app/oxinbox-backend
 COPY --from=builder /app/backend/migrations /app/migrations/
+COPY frontend/dist /app/frontend/dist/
+COPY frontend/public /app/frontend/dist/
 
 RUN chown -R app:app /app
 
