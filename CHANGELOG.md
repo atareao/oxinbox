@@ -1,10 +1,19 @@
 # Changelog
+## [0.1.13] - 2026-07-11
+
+### Miscellaneous Tasks
+
+- Fix fmt and bump detection after workspace restructure
 ## [0.1.12] - 2026-07-11
 
 ### Features
 
 - Modernize oxinbox — React frontend, OIDC auth, projects and contexts
 - Modernize oxinbox — React frontend, OIDC auth, projects and contexts
+
+### Miscellaneous Tasks
+
+- Release v0.1.12
 
 ### Other
 
