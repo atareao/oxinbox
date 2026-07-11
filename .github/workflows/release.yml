@@ -38,7 +38,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }} --manifest-path backend/Cargo.toml
       - name: Prepare archive
         run: |
-          BIN="target/${{ matrix.target }}/release/oxinbox"
+          BIN="backend/target/${{ matrix.target }}/release/oxinbox"
           PKG="oxinbox-${{ matrix.target }}"
           cp "$BIN" "$PKG"
           tar czf "$PKG.tar.gz" "$PKG"
