@@ -1,5 +1,14 @@
 # Changelog
+## [0.1.15] - 2026-07-11
+
+### Bug Fixes
+
+- Wrap ParadeDbRepository in Arc and derive Clone for e2e tests
 ## [0.1.14] - 2026-07-11
+
+### Miscellaneous Tasks
+
+- Release v0.1.14
 
 ### Styling
 
