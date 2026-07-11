@@ -1,13 +1,37 @@
 # Changelog
+## [0.2.0] - 2026-07-11
+
+### Bug Fixes
+
+- Cerrar correctamente <Routes> en App.tsx
+
+### Features
+
+- Rediseñar prompt LLM con patrones de lenguaje natural y ejemplos few-shot
+- Prompt configurable con tabla BD, modelo, CRUD, rutas y refactor de build_task_prompt
+- PromptSettingsPage con editor de prompts, vista previa y test
+- Devolver defaults en GET /api/prompts cuando no hay config guardada
+
+### Miscellaneous Tasks
+
+- Release v0.1.17
+
+### Refactor
+
+- Consolidate task creation, fix BM25 search, kill in-memory query engine
+- Consolidate task creation, fix BM25 search, kill in-memory query engine
 ## [0.1.17] - 2026-07-11
 
 ### Miscellaneous Tasks
 
 - Fix binary path in release.yml after workspace restructure
+- Fix binary path in release.yml after workspace restructure
+- Release v0.1.17
 ## [0.1.16] - 2026-07-11
 
 ### Documentation
 
+- Add pre-commit checklist to GIT_FLOW.md
 - Add pre-commit checklist to GIT_FLOW.md
 
 ### Miscellaneous Tasks
@@ -17,6 +41,7 @@
 
 ### Bug Fixes
 
+- Wrap ParadeDbRepository in Arc and derive Clone for e2e tests
 - Wrap ParadeDbRepository in Arc and derive Clone for e2e tests
 
 ### Miscellaneous Tasks
@@ -37,6 +62,10 @@
 
 - Fix fmt and bump detection after workspace restructure
 - Release v0.1.13
+
+### Styling
+
+- Apply cargo fmt to all backend files
 ## [0.1.12] - 2026-07-11
 
 ### Features
