@@ -12,6 +12,8 @@
 
 #![allow(clippy::significant_drop_tightening)]
 
+use std::sync::Arc;
+
 use oxinbox::auth::AuthState;
 use oxinbox::database::ParadeDbRepository;
 use oxinbox::push::PushService;
@@ -44,7 +46,7 @@ impl TestApp {
         let db = ParadeDbRepository::new(pool);
         let token = "test-token".to_string();
         let push = PushService::new();
-        let state = AuthState::test(None, db, push);
+        let state = AuthState::test(None, Arc::new(db), push);
 
         let app = routes::api_routes(&state).with_state(state.clone());
 
