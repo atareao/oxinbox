@@ -1,9 +1,18 @@
 # Changelog
+## [0.1.17] - 2026-07-11
+
+### Miscellaneous Tasks
+
+- Fix binary path in release.yml after workspace restructure
 ## [0.1.16] - 2026-07-11
 
 ### Documentation
 
 - Add pre-commit checklist to GIT_FLOW.md
+
+### Miscellaneous Tasks
+
+- Release v0.1.16
 ## [0.1.15] - 2026-07-11
 
 ### Bug Fixes
