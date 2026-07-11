@@ -1,0 +1,29 @@
+[Unit]
+Description=oxinbox database (ParadeDB)
+After=network-online.target
+
+[Container]
+Image=paradedb/paradedb:latest
+ContainerName=oxinbox-db
+Network=oxinbox.network
+Volume=oxinbox-pgdata.volume:/var/lib/postgresql
+
+Environment=POSTGRES_USER=oxinbox
+Environment=POSTGRES_PASSWORD=oxinbox_dev
+Environment=POSTGRES_DB=oxinbox
+Environment=POSTGRES_INITDB_ARGS=--locale=C.UTF-8 --encoding=UTF8
+Environment=LANG=C.UTF-8
+Environment=TZ=Europe/Madrid
+
+PublishPort=5432:5432
+
+HealthCmd=pg_isready -U oxinbox
+HealthInterval=5s
+HealthTimeout=5s
+HealthRetries=5
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

@@ -20,7 +20,6 @@ pub async fn require_auth(
         .and_then(|v| v.strip_prefix("Bearer "));
 
     let Some(token) = token else {
-        tracing::debug!("missing or invalid Authorization header");
         return (
             StatusCode::UNAUTHORIZED,
             "missing or invalid Authorization header",
@@ -28,36 +27,31 @@ pub async fn require_auth(
             .into_response();
     };
 
-    let user_id = {
-        let sessions = auth_state.sessions.read().await;
-        if let Some(&uid) = sessions.get(token) {
-            Some(uid)
-        } else {
-            None
-        }
-    };
-
-    let user_id = if let Some(uid) = user_id {
-        uid
-    } else if let Some(ref db) = auth_state.db {
-        if let Ok(Some(uid)) = db.validate_session(token).await {
-            auth_state
-                .sessions
-                .write()
-                .await
-                .insert(token.to_string(), uid);
-            uid
-        } else {
-            tracing::warn!("invalid session token");
-            return (StatusCode::UNAUTHORIZED, "invalid or expired session").into_response();
+    let token = token.to_string();
+    let user = if auth_state.jwt_validator.is_test() || std::env::var("DEV_MODE").is_ok() {
+        tracing::debug!("dev-mode auth bypass for user_id={token}");
+        AuthUser {
+            user_id: token,
+            email: Some("dev@oxinbox.app".into()),
+            name: Some("Dev User".into()),
         }
     } else {
-        tracing::warn!("invalid session token");
-        return (StatusCode::UNAUTHORIZED, "invalid or expired session").into_response();
+        match auth_state.jwt_validator.validate_token(&token).await {
+            Ok(claims) => {
+                tracing::debug!("authenticated request");
+                AuthUser {
+                    user_id: claims.sub,
+                    email: claims.email,
+                    name: claims.name,
+                }
+            }
+            Err(e) => {
+                tracing::warn!("JWT validation failed: {e}");
+                return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
+            }
+        }
     };
 
-    request.extensions_mut().insert(AuthUser { user_id });
-
-    tracing::debug!(user_id, "authenticated request");
+    request.extensions_mut().insert(user);
     next.run(request).await
 }

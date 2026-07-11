@@ -7,6 +7,7 @@
 
 pub mod ai;
 pub mod auth;
+pub mod core_types;
 pub mod database;
 pub mod db;
 pub mod geo;
@@ -14,4 +15,3 @@ pub mod middleware;
 pub mod push;
 pub mod repository;
 pub mod routes;
-pub mod search;

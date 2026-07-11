@@ -22,7 +22,7 @@ pub struct ContextZone {
 
 #[derive(Clone)]
 pub struct GeoService {
-    pub locations: Arc<RwLock<HashMap<i32, UserLocation>>>,
+    pub locations: Arc<RwLock<HashMap<String, UserLocation>>>,
     pub zones: Arc<RwLock<HashMap<String, ContextZone>>>,
 }
 
@@ -46,8 +46,8 @@ impl GeoService {
     }
 
     #[instrument(skip(self))]
-    pub async fn update_location(&self, user_id: i32, loc: UserLocation) {
-        self.locations.write().await.insert(user_id, loc);
+    pub async fn update_location(&self, user_id: &str, loc: UserLocation) {
+        self.locations.write().await.insert(user_id.to_string(), loc);
         tracing::info!(user_id, "location updated");
     }
 
@@ -57,9 +57,8 @@ impl GeoService {
         self.zones.write().await.insert(zone.name.clone(), zone);
     }
 
-    #[allow(dead_code)]
-    pub async fn check_proximity(&self, user_id: i32) -> Vec<String> {
-        let location = self.locations.read().await.get(&user_id).cloned();
+    pub async fn check_proximity(&self, user_id: &str) -> Vec<String> {
+        let location = self.locations.read().await.get(user_id).cloned();
         let Some(loc) = location else {
             return Vec::new();
         };
@@ -104,7 +103,7 @@ mod tests {
     #[tokio::test]
     async fn check_proximity_empty_when_no_location() {
         let geo = GeoService::new();
-        let near = geo.check_proximity(1).await;
+        let near = geo.check_proximity("test-user").await;
         assert!(near.is_empty());
     }
 }

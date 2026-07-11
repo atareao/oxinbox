@@ -2,34 +2,37 @@
 
 ## Project state
 
-- **Active development.** Workspace structure with `core/`, `backend/`, `frontend/` crates. The architecture is specified in `ESPECIFICACIONES.md` (Spanish).
+- **Active development.** Single `backend/` crate with data types in `core_types` module, plus `frontend/` (JS/TS). The architecture is specified in `ESPECIFICACIONES.md` (Spanish).
 - **Rust edition 2024.** Ensure `cargo` and `rustc` support this; pin a toolchain file if CI complains.
 
 ## Specification → code
 
-`ESPECIFICACIONES.md` is the source of truth. The system will become a Cargo workspace:
+`ESPECIFICACIONES.md` is the source of truth.
 
 | Crate | Role | Tech |
 |---|---|---|
-| `core/` | Shared data types (Task, TaskStatus, TaskHistory, UUID v7) | serde, chrono, uuid |
-| `backend/` | HTTP/WS API server | Axum, ParadeDB (PostgreSQL + pgvector + BM25), WebAuthn, Whisper/LLM |
-| `frontend/` | PWA WebAssembly client | Dioxus, IndexedDB sync, Service Worker |
+| `oxinbox` (backend/) | HTTP/WS API server + shared data types | Axum, ParadeDB (PostgreSQL + pgvector + BM25), WebAuthn, Whisper/LLM |
+| `frontend/` | PWA React client | React 19, Vite, antd, Dexie.js, Service Worker |
 
-- The root `Cargo.toml` must be the **workspace** root (not a package). Migrate the current single crate to `core/` or `backend/`.
-- Task IDs are **UUID v7** (time-sortable). Enable `uuid/v7` feature.
+- Task IDs are **UUID v7** (time-sortable). Enabled via `uuid/v7` feature.
 
 ## Commands
 
 ```sh
-cargo build               # build all workspace members
-cargo build -p oxinbox-core
-cargo build -p oxinbox-backend
-cargo test                # run all tests
-cargo clippy --all-targets -- -D warnings
+cargo build --manifest-path backend/Cargo.toml
+cargo test --manifest-path backend/Cargo.toml
 cargo fmt --check
 ```
 
-Git Flow with conventional commits + gitmoji. See [GIT_FLOW.md](./GIT_FLOW.md).
+### Pre-commit checklist
+
+**Siempre** pasar clippy antes de commitear en cualquier rama:
+
+```sh
+cargo clippy --manifest-path backend/Cargo.toml -- -D warnings
+```
+
+No commitees si clippy falla. Esto asegura que `release.yml` nunca falle por lint warnings en código existente.
 
 ## Conventions
 

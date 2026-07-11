@@ -1,202 +1,198 @@
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{
+    Json,
+    extract::{Query, State},
+    http::{StatusCode, header},
+    response::{IntoResponse, Redirect},
+};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
-use webauthn_rs::prelude::*;
 
 use crate::auth::AuthState;
 
 #[derive(Debug, Deserialize)]
-pub struct StartRegistrationRequest {
-    pub email: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct StartRegistrationResponse {
-    pub challenge: CreationChallengeResponse,
-    pub state_id: String,
+pub struct AuthCallbackQuery {
+    pub code: String,
+    pub state: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct FinishRegistrationRequest {
-    pub state_id: String,
-    pub credential: RegisterPublicKeyCredential,
+pub struct DevLoginQuery {
+    pub email: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct FinishRegistrationResponse {
-    pub token: String,
-    pub user_id: i32,
+pub struct MeResponse {
+    pub sub: String,
+    pub email: Option<String>,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct StartLoginRequest {
-    pub email: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct StartLoginResponse {
-    pub challenge: RequestChallengeResponse,
-    pub state_id: String,
+struct TokenResponse {
+    access_token: String,
+    #[allow(dead_code)]
+    token_type: String,
+    #[allow(dead_code)]
+    expires_in: u64,
+    id_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct FinishLoginRequest {
-    pub state_id: String,
-    pub credential: PublicKeyCredential,
+struct UserInfoResponse {
+    sub: String,
+    email: Option<String>,
+    name: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct FinishLoginResponse {
-    pub token: String,
-    pub user_id: i32,
+#[instrument(skip(state))]
+pub async fn login(State(state): State<AuthState>) -> Redirect {
+    let url = state.oidc.authorize_url();
+    tracing::info!("redirecting to OIDC provider: {}", url);
+    Redirect::to(&url)
 }
 
-#[instrument(skip(state), fields(email = %req.email))]
-pub async fn start_registration(
+#[instrument(skip(state))]
+pub async fn callback(
     State(state): State<AuthState>,
-    Json(req): Json<StartRegistrationRequest>,
-) -> Result<Json<StartRegistrationResponse>, StatusCode> {
-    let user_uuid = Uuid::new_v4();
-    let (ccr, reg_state) = state
-        .webauthn
-        .start_passkey_registration(user_uuid, &req.email, &req.email, None)
-        .map_err(|e| {
-            tracing::error!(error = %e, "start_passkey_registration failed");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    Query(query): Query<AuthCallbackQuery>,
+) -> impl IntoResponse {
+    let token_url = format!(
+        "{}/api/oidc/token",
+        state.oidc.issuer.trim_end_matches('/')
+    );
 
-    let state_id = AuthState::generate_token();
-    state
-        .reg_states
-        .write()
+    let params = [
+        ("grant_type", "authorization_code"),
+        ("code", &query.code),
+        ("redirect_uri", &state.oidc.redirect_uri),
+        ("client_id", &state.oidc.client_id),
+        ("client_secret", &state.oidc.client_secret),
+    ];
+
+    let client = reqwest::Client::new();
+    let token_resp = match client
+        .post(&token_url)
+        .form(&params)
+        .send()
         .await
-        .insert(state_id.clone(), (reg_state, req.email));
-
-    tracing::info!("registration challenge issued");
-    Ok(Json(StartRegistrationResponse {
-        challenge: ccr,
-        state_id,
-    }))
-}
-
-#[instrument(skip(state), fields(state_id = %req.state_id))]
-pub async fn finish_registration(
-    State(state): State<AuthState>,
-    Json(req): Json<FinishRegistrationRequest>,
-) -> Result<Json<FinishRegistrationResponse>, StatusCode> {
-    let (reg_state, email) = state
-        .reg_states
-        .write()
-        .await
-        .remove(&req.state_id)
-        .ok_or_else(|| {
-            tracing::warn!("registration state not found or expired");
-            StatusCode::BAD_REQUEST
-        })?;
-
-    let passkey = state
-        .webauthn
-        .finish_passkey_registration(&req.credential, &reg_state)
-        .map_err(|e| {
-            tracing::error!(error = %e, "finish_passkey_registration failed");
-            StatusCode::UNAUTHORIZED
-        })?;
-
-    let user_id = AuthState::next_user_id();
-    state.users.write().await.insert(email.clone(), user_id);
-    state
-        .credentials
-        .write()
-        .await
-        .insert(user_id, vec![passkey]);
-
-    let token = AuthState::generate_token();
-    state.sessions.write().await.insert(token.clone(), user_id);
-
-    if let Some(ref db) = state.db {
-        let _ = db.upsert_user(&email).await;
-        let _ = db.create_session(&token, user_id).await;
-    }
-
-    tracing::info!(user_id, "user registered and session created");
-    Ok(Json(FinishRegistrationResponse { token, user_id }))
-}
-
-#[instrument(skip(state), fields(email = %req.email))]
-pub async fn start_login(
-    State(state): State<AuthState>,
-    Json(req): Json<StartLoginRequest>,
-) -> Result<Json<StartLoginResponse>, StatusCode> {
-    let user_id = state
-        .users
-        .read()
-        .await
-        .get(&req.email)
-        .copied()
-        .ok_or_else(|| {
-            tracing::warn!("login attempt for unknown email");
-            StatusCode::NOT_FOUND
-        })?;
-
-    let credentials = state.credentials.read().await;
-    let Some(user_credentials) = credentials.get(&user_id) else {
-        return Err(StatusCode::NOT_FOUND);
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!(error = %e, url = %token_url, "token exchange failed");
+            return (StatusCode::BAD_GATEWAY, format!("token exchange failed: {e}")).into_response();
+        }
     };
-    let user_credentials = user_credentials.clone();
-    drop(credentials);
 
-    let (rcr, auth_state) = state
-        .webauthn
-        .start_passkey_authentication(&user_credentials)
-        .map_err(|e| {
-            tracing::error!(error = %e, "start_passkey_authentication failed");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    let state_id = AuthState::generate_token();
-    state
-        .auth_states
-        .write()
-        .await
-        .insert(state_id.clone(), (auth_state, user_id));
-
-    tracing::info!(user_id, "authentication challenge issued");
-    Ok(Json(StartLoginResponse {
-        challenge: rcr,
-        state_id,
-    }))
-}
-
-#[instrument(skip(state), fields(state_id = %req.state_id))]
-pub async fn finish_login(
-    State(state): State<AuthState>,
-    Json(req): Json<FinishLoginRequest>,
-) -> Result<Json<FinishLoginResponse>, StatusCode> {
-    let (auth_state, user_id) = state
-        .auth_states
-        .write()
-        .await
-        .remove(&req.state_id)
-        .ok_or_else(|| {
-            tracing::warn!("authentication state not found or expired");
-            StatusCode::BAD_REQUEST
-        })?;
-
-    let _auth_result = state
-        .webauthn
-        .finish_passkey_authentication(&req.credential, &auth_state)
-        .map_err(|e| {
-            tracing::error!(error = %e, "finish_passkey_authentication failed");
-            StatusCode::UNAUTHORIZED
-        })?;
-
-    let token = AuthState::generate_token();
-    state.sessions.write().await.insert(token.clone(), user_id);
-
-    if let Some(ref db) = state.db {
-        let _ = db.create_session(&token, user_id).await;
+    let status = token_resp.status();
+    if !status.is_success() {
+        let body = token_resp.text().await.unwrap_or_default();
+        tracing::error!("token endpoint error {}: {}", status, body);
+        return (
+            StatusCode::BAD_GATEWAY,
+            format!("token endpoint error: {body}"),
+        )
+            .into_response();
     }
 
-    tracing::info!(user_id, "user authenticated and session created");
-    Ok(Json(FinishLoginResponse { token, user_id }))
+    let token_data: TokenResponse = match token_resp.json().await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::error!("failed to parse token response: {e}");
+            return (StatusCode::BAD_GATEWAY, "invalid token response").into_response();
+        }
+    };
+
+    let access_token = token_data.access_token.clone();
+    let jwt = token_data.id_token.unwrap_or(token_data.access_token);
+
+    let userinfo_url = format!(
+        "{}/api/oidc/userinfo",
+        state.oidc.issuer.trim_end_matches('/')
+    );
+
+    let user_info = match client
+        .get(&userinfo_url)
+        .header("Authorization", format!("Bearer {access_token}"))
+        .send()
+        .await
+    {
+        Ok(r) => r.json::<UserInfoResponse>().await.ok(),
+        Err(_) => None,
+    };
+
+    let html = format!(
+        r"<!DOCTYPE html>
+<html>
+<head><title>Redirecting...</title></head>
+<body>
+<script>
+sessionStorage.setItem('oxinbox_token', '{jwt}');
+{user_data}
+window.location.href = '/';
+</script>
+</body>
+</html>",
+        jwt = jwt,
+        user_data = user_info
+            .as_ref()
+            .map(|u| {
+                format!(
+                    "sessionStorage.setItem('oxinbox_user', JSON.stringify({}));",
+                    serde_json::json!({
+                        "sub": u.sub,
+                        "email": u.email,
+                        "name": u.name,
+                    })
+                )
+            })
+            .unwrap_or_default()
+    );
+
+    ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], html).into_response()
+}
+
+#[instrument(skip(state))]
+pub async fn dev_login(
+    State(state): State<AuthState>,
+    Query(query): Query<DevLoginQuery>,
+) -> impl IntoResponse {
+    let sub = query.email.clone().unwrap_or_else(|| "dev@oxinbox.app".into());
+
+    let jwt = if state.oidc.client_secret.is_empty() {
+        state.oidc.client_id.clone()
+    } else {
+        sub.clone()
+    };
+
+    let html = format!(
+        r"<!DOCTYPE html>
+<html>
+<head><title>Redirecting...</title></head>
+<body>
+<script>
+sessionStorage.setItem('oxinbox_token', '{jwt}');
+sessionStorage.setItem('oxinbox_user', JSON.stringify({user}));
+window.location.href = '/';
+</script>
+</body>
+</html>",
+        jwt = jwt,
+        user = serde_json::json!({
+            "sub": sub,
+            "email": sub,
+            "name": sub.split('@').next().unwrap_or("Dev"),
+        })
+    );
+
+    ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], html).into_response()
+}
+
+pub async fn me(
+    axum::Extension(user): axum::Extension<crate::auth::AuthUser>,
+) -> Json<MeResponse> {
+    Json(MeResponse {
+        sub: user.user_id,
+        email: user.email,
+        name: user.name,
+    })
 }
