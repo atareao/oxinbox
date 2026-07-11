@@ -71,26 +71,123 @@ pub async fn build_task_prompt(db: &ParadeDbRepository, user_id: &str, source: &
         .join("\n");
 
     format!(
-        r##"Eres un asistente que convierte {source} en tareas estructuradas.
+        r##"Eres un asistente que convierte {source} en tareas estructuradas siguiendo la metodología GTD (Getting Things Done).
 
-Contexto actual:
+Contexto actual del usuario:
 - Proyectos existentes: {}
 - Contextos existentes: {}
-- Últimas tareas (para referencia de prioridades y patrones):
+- Últimas tareas (para referencia de patrones y prioridades):
 {}
 
-Debes extraer UNA SOLA tarea del texto de usuario. Si hay múltiples, elige la más importante.
+--- REGLAS GENERALES ---
 
-Analiza el texto y asigna prioridad según la urgencia implícita. Usa 'A' para muy urgente, 'B' para normal, 'C' para baja o null si no está claro.
+1. Extrae **UNA SOLA tarea**. Si hay múltiples ideas, elige la más importante o la primera.
 
-Para project_name y context_name: si existe una coincidencia clara con los existentes, úsala. Si no existe, SUGIERE un nombre nuevo y el sistema lo creará automáticamente. Si no aplica ninguno, devuelve null.
+2. La **description** debe ser la acción concreta, limpia y sin palabras de relleno.
+   - "Añade pepinillos a la lista de la compra" → description: "Pepinillos"
+   - "No olvidar comprar leche" → description: "Comprar leche"
+   - "Apúntate que tengo que llamar al fontanero" → description: "Llamar al fontanero"
+   - "Recordar cita con el dentista el viernes" → description: "Cita con el dentista"
+
+3. **prioridad**: A (urgente), B (normal), C (baja), null (sin determinar).
+   - Si menciona "urgente", "crítico", "ya" → A
+   - "importante", "pronto" → B
+   - "cuando pueda", "sin prisa", "algún día" → C
+   - Por defecto → B
+
+--- MARCADORES EXPLÍCITOS (prevalecen sobre inferencia) ---
+
+- **@nombre** → context_name exacto. Ej: "@trabajo", "@casa", "@personal"
+- **+nombre** → project_name exacto. Ej: "+web", "+lista-de-la-compra"
+- **prioridad:X** → priority explícita. Ej: "prioridad:A"
+- **para:YYYY-MM-DD** o **vencimiento:YYYY-MM-DD** → due_date
+
+Los marcadores @ + prioridad: se eliminan de la description final.
+
+--- INFERENCIA DE PROYECTO Y CONTEXTO DESDE LENGUAJE NATURAL ---
+
+Si NO hay marcadores explícitos (@ +), infiere proyecto y contexto así:
+
+**Patrones para inferir project_name:**
+- "a la lista de [nombre]" → project_name: "[nombre]" (ej: "a la lista de la compra" → "Lista de la compra")
+- "para [proyecto]" → project_name: "[proyecto]" (ej: "para la web" → "Web")
+- "del proyecto [nombre]" → project_name: "[nombre]"
+- "de [proyecto]" → project_name podría ser "[proyecto]" si es un nombre concreto
+- Cualquier sustantivo que funcione como categoría de tareas puede ser un proyecto
+
+**Patrones para inferir context_name:**
+- "en [lugar]" → context refleja el lugar (ej: "en la oficina" → "Trabajo", "en casa" → "Casa")
+- "para casa" → context: "Casa"
+- "para el trabajo" → context: "Trabajo"
+- Si el proyecto es "Lista de la compra" → context sugerido: "Casa"
+- Si el proyecto es "Web", "Servidor", "Backend" → context sugerido: "Trabajo"
+- Si el proyecto es "Personal", "Música", "Lectura" → context sugerido: "Personal"
+- Si hay coincidencia clara con contextos existentes, úsala. Si no, sugiere el nombre.
+
+--- EJEMPLOS ---
+
+Usuario: "Añade pepinillos a la lista de la compra"
+{{
+  "description": "Pepinillos",
+  "priority": "B",
+  "project_name": "Lista de la compra",
+  "context_name": "Casa",
+  "due_date": null
+}}
+
+Usuario: "Comprar leche"
+{{
+  "description": "Comprar leche",
+  "priority": "B",
+  "project_name": null,
+  "context_name": null,
+  "due_date": null
+}}
+
+Usuario: "Llamar al fontanero urgente @casa"
+{{
+  "description": "Llamar al fontanero",
+  "priority": "A",
+  "project_name": null,
+  "context_name": "casa",
+  "due_date": null
+}}
+
+Usuario: "Preparar presentación para la reunión del jueves +proyecto-ventas prioridad:A"
+{{
+  "description": "Preparar presentación para la reunión del jueves",
+  "priority": "A",
+  "project_name": "proyecto-ventas",
+  "context_name": "Trabajo",
+  "due_date": null
+}}
+
+Usuario: "No olvidar que tengo que pedir cita con el médico para el 15 de agosto"
+{{
+  "description": "Pedir cita con el médico",
+  "priority": "B",
+  "project_name": null,
+  "context_name": "Personal",
+  "due_date": "2026-08-15"
+}}
+
+Usuario: "Apuntar revisión del coche +mantenimiento-coche para:2026-08-01"
+{{
+  "description": "Revisión del coche",
+  "priority": "B",
+  "project_name": "mantenimiento-coche",
+  "context_name": "Personal",
+  "due_date": "2026-08-01"
+}}
+
+--- FORMATO DE RESPUESTA ---
 
 Responde ÚNICAMENTE con un JSON válido, sin markdown, sin texto adicional:
 {{
   "description": "Descripción limpia de la tarea",
   "priority": "A" | "B" | "C" | null,
-  "project_name": "Nombre del proyecto" | null,
-  "context_name": "Nombre del contexto" | null,
+  "project_name": "Nombre del proyecto exacto (coincide con existentes o sugiere nuevo)" | null,
+  "context_name": "Nombre del contexto exacto (coincide con existentes o sugiere nuevo)" | null,
   "due_date": "YYYY-MM-DD" | null
 }}"##,
         serde_json::to_string(&project_names).unwrap_or_default(),
