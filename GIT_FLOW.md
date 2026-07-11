@@ -11,6 +11,17 @@ Este proyecto sigue **Git Flow** con versionado semántico automático.
 | `feature/*` | Nuevas funcionalidades. | `development` |
 | `hotfix/*` | Correcciones urgentes a producción. | `main` |
 
+## Pre-commit checklist
+
+**Siempre** ejecutar estos dos pasos antes de cualquier commit, en cualquier rama:
+
+```bash
+cargo fmt --manifest-path backend/Cargo.toml -- --check   # formato
+cargo clippy --manifest-path backend/Cargo.toml -- -D warnings  # lint
+```
+
+No commitees si cualquiera de los dos falla. De no seguir esta regla, el CI fallará y habrá que arreglarlo con commits extra a `main`.
+
 ## Flujo diario
 
 ### Features
@@ -18,7 +29,9 @@ Este proyecto sigue **Git Flow** con versionado semántico automático.
 ```bash
 git checkout development && git pull origin development
 git checkout -b feature/mi-feature
-# Verifica que clippy pasa antes de commitear
+
+# Pre-commit: formato + lint
+cargo fmt --manifest-path backend/Cargo.toml -- --check
 cargo clippy --manifest-path backend/Cargo.toml -- -D warnings
 
 git commit -m "✨ feat: add dark mode toggle"
@@ -31,8 +44,11 @@ git push origin feature/mi-feature
 ```bash
 git checkout main && git pull origin main
 git checkout -b hotfix/arreglo-critico
-# Verifica que clippy pasa antes de commitear
+
+# Pre-commit: formato + lint
+cargo fmt --manifest-path backend/Cargo.toml -- --check
 cargo clippy --manifest-path backend/Cargo.toml -- -D warnings
+
 git commit -m "🚑️ hotfix: crash on empty input"
 git push origin hotfix/arreglo-critico
 # Crear Pull Request a main en GitHub
