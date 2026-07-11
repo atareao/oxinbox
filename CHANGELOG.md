@@ -1,9 +1,18 @@
 # Changelog
+## [0.1.16] - 2026-07-11
+
+### Documentation
+
+- Add pre-commit checklist to GIT_FLOW.md
 ## [0.1.15] - 2026-07-11
 
 ### Bug Fixes
 
 - Wrap ParadeDbRepository in Arc and derive Clone for e2e tests
+
+### Miscellaneous Tasks
+
+- Release v0.1.15
 ## [0.1.14] - 2026-07-11
 
 ### Miscellaneous Tasks

@@ -1,6 +1,6 @@
 [package]
 name = "oxinbox"
-version = "0.1.15"
+version = "0.1.16"
 edition = "2024"
 description = "HTTP/WS API server for the oxinbox GTD productivity system"
 license = "MIT"
