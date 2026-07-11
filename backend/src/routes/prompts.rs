@@ -5,6 +5,7 @@ use tracing::instrument;
 
 use crate::auth::{AuthState, AuthUser};
 use crate::core_types::PromptConfig;
+use crate::ai::task_builder::{DEFAULT_SYSTEM_INSTRUCTIONS, DEFAULT_FEW_SHOT_EXAMPLES, DEFAULT_RULES};
 
 #[derive(Debug, Deserialize)]
 pub struct UpdatePromptRequest {
@@ -42,9 +43,9 @@ pub async fn get_prompt_config(
     // Return defaults if user hasn't saved any config yet
     let config = config.unwrap_or_else(|| PromptConfig {
         user_id: user.user_id.clone(),
-        system_instructions: String::new(),
-        few_shot_examples: String::new(),
-        rules: String::new(),
+        system_instructions: DEFAULT_SYSTEM_INSTRUCTIONS.to_string(),
+        few_shot_examples: DEFAULT_FEW_SHOT_EXAMPLES.to_string(),
+        rules: DEFAULT_RULES.to_string(),
         updated_at: chrono::Utc::now(),
     });
 

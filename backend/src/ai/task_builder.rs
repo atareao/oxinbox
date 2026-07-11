@@ -131,7 +131,7 @@ pub async fn build_task_prompt(
 // Default prompt sections (used when user has no saved config)
 // ---------------------------------------------------------------------------
 
-const DEFAULT_SYSTEM_INSTRUCTIONS: &str = r##"Eres un asistente que convierte {{source}} en tareas estructuradas siguiendo la metodología GTD (Getting Things Done).
+pub const DEFAULT_SYSTEM_INSTRUCTIONS: &str = r##"Eres un asistente que convierte {{source}} en tareas estructuradas siguiendo la metodología GTD (Getting Things Done).
 
 Contexto actual del usuario:
 - Proyectos existentes: {{projects}}
@@ -141,7 +141,7 @@ Contexto actual del usuario:
 
 const FEW_SHOT_HEADER: &str = "--- EJEMPLOS ---\n\n";
 
-const DEFAULT_FEW_SHOT_EXAMPLES: &str = r##"Usuario: "Añade pepinillos a la lista de la compra"
+pub const DEFAULT_FEW_SHOT_EXAMPLES: &str = r##"Usuario: "Añade pepinillos a la lista de la compra"
 {{
   "description": "Pepinillos",
   "priority": "B",
@@ -195,7 +195,7 @@ Usuario: "Apuntar revisión del coche +mantenimiento-coche para:2026-08-01"
   "due_date": "2026-08-01"
 }}"##;
 
-const DEFAULT_RULES: &str = r##"--- REGLAS GENERALES ---
+pub const DEFAULT_RULES: &str = r##"--- REGLAS GENERALES ---
 
 1. Extrae **UNA SOLA tarea**. Si hay múltiples ideas, elige la más importante o la primera.
 
