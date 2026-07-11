@@ -1,9 +1,23 @@
 # Changelog
+## [0.1.12] - 2026-07-11
+
+### Features
+
+- Modernize oxinbox — React frontend, OIDC auth, projects and contexts
+- Modernize oxinbox — React frontend, OIDC auth, projects and contexts
+
+### Other
+
+- V0.2.0 — React frontend, OIDC auth, projects and contexts
 ## [0.1.11] - 2026-07-05
 
 ### Bug Fixes
 
 - Address clippy warnings in frontend_fallback (#15)
+
+### Miscellaneous Tasks
+
+- Release v0.1.11
 ## [0.1.10] - 2026-07-05
 
 ### Bug Fixes
