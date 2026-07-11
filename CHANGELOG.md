@@ -1,4 +1,9 @@
 # Changelog
+## [0.3.0] - 2026-07-11
+
+### Features
+
+- Flujo GTD con navegación de estados y actualización parcial de tareas
 ## [0.2.0] - 2026-07-11
 
 ### Bug Fixes
@@ -15,6 +20,7 @@
 ### Miscellaneous Tasks
 
 - Release v0.1.17
+- Release v0.2.0
 
 ### Refactor
 
