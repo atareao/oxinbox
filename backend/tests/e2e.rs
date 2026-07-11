@@ -32,8 +32,8 @@ impl TestApp {
     async fn new() -> Self {
         let guard = TEST_MUTEX.lock().await;
 
-        let database_url = std::env::var("DATABASE_URL")
-            .expect("DATABASE_URL required for e2e tests");
+        let database_url =
+            std::env::var("DATABASE_URL").expect("DATABASE_URL required for e2e tests");
         let pool = oxinbox::db::create_pool(&database_url)
             .await
             .expect("failed to connect to ParadeDB");
@@ -300,7 +300,10 @@ async fn project_crud() {
     assert!(projects.is_empty());
 
     let created = app
-        .auth_post("/api/projects", &serde_json::json!({"name": "Work", "color": "#1677ff"}))
+        .auth_post(
+            "/api/projects",
+            &serde_json::json!({"name": "Work", "color": "#1677ff"}),
+        )
         .await;
     assert_eq!(created.status(), 200);
     let project: serde_json::Value = created.json().await.unwrap();
@@ -314,7 +317,10 @@ async fn project_crud() {
 
     let id = project["id"].as_str().unwrap();
     let updated = app
-        .auth_put(&format!("/api/projects/{id}"), &serde_json::json!({"name": "Work v2"}))
+        .auth_put(
+            &format!("/api/projects/{id}"),
+            &serde_json::json!({"name": "Work v2"}),
+        )
         .await;
     assert_eq!(updated.status(), 200);
 
@@ -333,7 +339,10 @@ async fn context_crud() {
     let app = TestApp::new().await;
 
     let created = app
-        .auth_post("/api/contexts", &serde_json::json!({"name": "Office", "color": "#52c41a"}))
+        .auth_post(
+            "/api/contexts",
+            &serde_json::json!({"name": "Office", "color": "#52c41a"}),
+        )
         .await;
     assert_eq!(created.status(), 200);
     let ctx: serde_json::Value = created.json().await.unwrap();

@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 use crate::auth::{AuthState, AuthUser};
-use crate::middleware::require_auth;
 use crate::core_types::Task;
+use crate::middleware::require_auth;
 
 #[derive(Debug, Deserialize)]
 pub struct QueryRequest {
@@ -390,10 +390,7 @@ fn format_results(tasks: &[Task]) -> String {
             let due = t
                 .due_date
                 .map_or(String::new(), |d| format!(" [vence: {d}]"));
-            format!(
-                "- [{status}]{prio} {}{due}",
-                t.description
-            )
+            format!("- [{status}]{prio} {}{due}", t.description)
         })
         .collect::<Vec<_>>()
         .join("\n")

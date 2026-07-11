@@ -5,9 +5,9 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::auth::{AuthState, AuthUser};
+use crate::core_types::Project;
 use crate::middleware::require_auth;
 use crate::repository::RepositoryError;
-use crate::core_types::Project;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateProjectRequest {

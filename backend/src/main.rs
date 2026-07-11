@@ -64,10 +64,7 @@ async fn main() {
 
     let push_service = push::PushService::new();
     let auth_state = auth::AuthState::new(ai_provider, db_repo, push_service);
-    tracing::info!(
-        "OIDC configured: issuer={}",
-        auth_state.oidc.issuer
-    );
+    tracing::info!("OIDC configured: issuer={}", auth_state.oidc.issuer);
 
     push::start_background_worker(auth_state.clone());
 

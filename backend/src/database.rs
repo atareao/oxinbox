@@ -271,7 +271,10 @@ impl ParadeDbRepository {
         Ok(())
     }
 
-    pub async fn find_project_by_name(&self, name: &str) -> Result<Option<Project>, RepositoryError> {
+    pub async fn find_project_by_name(
+        &self,
+        name: &str,
+    ) -> Result<Option<Project>, RepositoryError> {
         let row = sqlx::query_as::<_, ProjectRow>(
             "SELECT id, name, color, created_at FROM projects WHERE name = $1",
         )
@@ -364,7 +367,10 @@ impl ParadeDbRepository {
         Ok(())
     }
 
-    pub async fn find_context_by_name(&self, name: &str) -> Result<Option<Context>, RepositoryError> {
+    pub async fn find_context_by_name(
+        &self,
+        name: &str,
+    ) -> Result<Option<Context>, RepositoryError> {
         let row = sqlx::query_as::<_, ContextRow>(
             "SELECT id, name, color, created_at FROM contexts WHERE name = $1",
         )

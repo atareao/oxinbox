@@ -10,8 +10,8 @@ use web_push::{
 };
 
 use crate::auth::AuthState;
-use base64::Engine;
 use crate::core_types::TaskStatus;
+use base64::Engine;
 use p256::elliptic_curve::sec1::ToSec1Point;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -188,7 +188,8 @@ pub fn start_background_worker(task_state: AuthState) {
             };
 
             let push = PushService::new();
-            push.notify_user("system", "oxinbox — Inbox estancado", &msg).await;
+            push.notify_user("system", "oxinbox — Inbox estancado", &msg)
+                .await;
         }
     });
 }

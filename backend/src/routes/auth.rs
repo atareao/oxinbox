@@ -56,10 +56,7 @@ pub async fn callback(
     State(state): State<AuthState>,
     Query(query): Query<AuthCallbackQuery>,
 ) -> impl IntoResponse {
-    let token_url = format!(
-        "{}/api/oidc/token",
-        state.oidc.issuer.trim_end_matches('/')
-    );
+    let token_url = format!("{}/api/oidc/token", state.oidc.issuer.trim_end_matches('/'));
 
     let params = [
         ("grant_type", "authorization_code"),
@@ -70,16 +67,15 @@ pub async fn callback(
     ];
 
     let client = reqwest::Client::new();
-    let token_resp = match client
-        .post(&token_url)
-        .form(&params)
-        .send()
-        .await
-    {
+    let token_resp = match client.post(&token_url).form(&params).send().await {
         Ok(r) => r,
         Err(e) => {
             tracing::error!(error = %e, url = %token_url, "token exchange failed");
-            return (StatusCode::BAD_GATEWAY, format!("token exchange failed: {e}")).into_response();
+            return (
+                StatusCode::BAD_GATEWAY,
+                format!("token exchange failed: {e}"),
+            )
+                .into_response();
         }
     };
 
@@ -156,7 +152,10 @@ pub async fn dev_login(
     State(state): State<AuthState>,
     Query(query): Query<DevLoginQuery>,
 ) -> impl IntoResponse {
-    let sub = query.email.clone().unwrap_or_else(|| "dev@oxinbox.app".into());
+    let sub = query
+        .email
+        .clone()
+        .unwrap_or_else(|| "dev@oxinbox.app".into());
 
     let jwt = if state.oidc.client_secret.is_empty() {
         state.oidc.client_id.clone()
@@ -187,9 +186,7 @@ window.location.href = '/';
     ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], html).into_response()
 }
 
-pub async fn me(
-    axum::Extension(user): axum::Extension<crate::auth::AuthUser>,
-) -> Json<MeResponse> {
+pub async fn me(axum::Extension(user): axum::Extension<crate::auth::AuthUser>) -> Json<MeResponse> {
     Json(MeResponse {
         sub: user.user_id,
         email: user.email,

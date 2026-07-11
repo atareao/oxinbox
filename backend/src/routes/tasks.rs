@@ -5,10 +5,10 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::auth::{AuthState, AuthUser};
+use crate::core_types::{Context, Project, Task, TaskHistoryEntry};
 use crate::database::ParadeDbRepository;
 use crate::middleware::require_auth;
 use crate::repository::RepositoryError;
-use crate::core_types::{Context, Project, Task, TaskHistoryEntry};
 
 // ---------------------------------------------------------------------------
 // Route factory
@@ -27,7 +27,10 @@ pub fn task_routes(state: AuthState) -> axum::Router<AuthState> {
                 .delete(delete_task),
         )
         .route("/api/tasks/search", axum::routing::post(search_tasks))
-        .route("/api/tasks/{id}/history", axum::routing::get(get_task_history))
+        .route(
+            "/api/tasks/{id}/history",
+            axum::routing::get(get_task_history),
+        )
         .layer(middleware::from_fn_with_state(state, require_auth))
 }
 
@@ -126,7 +129,10 @@ async fn auto_assign_context(
         content: description.to_string(),
     }];
 
-    let result = ai.chat(&system_prompt, &messages).await.map_err(|e| e.to_string())?;
+    let result = ai
+        .chat(&system_prompt, &messages)
+        .await
+        .map_err(|e| e.to_string())?;
 
     #[derive(serde::Deserialize)]
     struct AutoAssignResponse {
@@ -134,8 +140,8 @@ async fn auto_assign_context(
         contexts: Vec<String>,
     }
 
-    let parsed: AutoAssignResponse =
-        serde_json::from_str(&result).map_err(|e| format!("AI response parse failed: {e}: {result}"))?;
+    let parsed: AutoAssignResponse = serde_json::from_str(&result)
+        .map_err(|e| format!("AI response parse failed: {e}: {result}"))?;
 
     let project_ids: Vec<Uuid> = projects
         .iter()
@@ -173,7 +179,9 @@ async fn record_changes(db: &ParadeDbRepository, old: &Task, new: &Task, task_id
             task_id,
             field_name: "priority".into(),
             old_value: old.priority.map(|c| c.to_string()),
-            new_value: new.priority.map_or_else(|| "null".into(), |c| c.to_string()),
+            new_value: new
+                .priority
+                .map_or_else(|| "null".into(), |c| c.to_string()),
             changed_at: now,
         });
     }
@@ -212,8 +220,13 @@ async fn record_changes(db: &ParadeDbRepository, old: &Task, new: &Task, task_id
             id: 0,
             task_id,
             field_name: "due_date".into(),
-            old_value: Some(old.due_date.map_or_else(|| "null".into(), |d| d.to_string())),
-            new_value: new.due_date.map_or_else(|| "null".into(), |d| d.to_string()),
+            old_value: Some(
+                old.due_date
+                    .map_or_else(|| "null".into(), |d| d.to_string()),
+            ),
+            new_value: new
+                .due_date
+                .map_or_else(|| "null".into(), |d| d.to_string()),
             changed_at: now,
         });
     }
