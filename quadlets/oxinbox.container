@@ -1,0 +1,35 @@
+[Unit]
+Description=oxinbox backend
+After=oxinbox-db.service
+Requires=oxinbox-db.service
+
+[Container]
+Image=localhost/atareao/oxinbox:latest
+ContainerName=oxinbox
+Network=oxinbox.network
+
+Environment=DATABASE_URL=postgres://oxinbox:oxinbox_dev@oxinbox-db:5432/oxinbox
+Environment=OIDC_ISSUER_URL=https://pocketid.territoriolinux.es
+Environment=OIDC_CLIENT_ID=650dc41f-39e4-4812-b344-15f104507d05
+EnvironmentFile=/etc/oxinbox/oidc.env
+Environment=AI_PROVIDER=openrouter
+Environment=AI_BASE_URL=https://openrouter.ai/api/v1
+EnvironmentFile=/etc/oxinbox/ai.env
+Environment=AI_MODEL=deepseek/deepseek-v4-flash
+Environment=AI_EMBEDDING_MODEL=baai/bge-m3
+Environment=AI_WHISPER_MODEL=qwen/qwen3-asr-flash-2026-02-10
+Environment=RUST_LOG=info
+Environment=TZ=Europe/Madrid
+
+PublishPort=3300:3300
+
+HealthCmd=wget --no-verbose --tries=1 --spider http://localhost:3300/health
+HealthInterval=10s
+HealthTimeout=5s
+HealthRetries=5
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

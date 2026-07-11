@@ -1,39 +1,25 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <meta name="theme-color" content="#3b82f6"/>
-  <link rel="manifest" href="/manifest.json"/>
-  <link rel="icon" type="image/png" href="/icon-192.png"/>
-  <link rel="stylesheet" href="/styles.css"/>
-  <title>oxinbox</title>
-</head>
-<body>
-  <div id="main">
-    <div class="container" style="padding-top:40vh">
-      <div class="flex flex-col items-center gap-3">
-        <h1>oxinbox</h1>
-        <p class="text-muted">Captura instantánea de tareas por voz</p>
-        <p class="text-muted text-sm">Cargando...</p>
-      </div>
-    </div>
-  </div>
-  <script type="module">
-    import init from "/assets/oxinbox_frontend.js";
-    init().catch(e => {
-      document.getElementById("main").innerHTML = `
-        <div class="container" style="padding-top:40vh">
-          <div class="flex flex-col items-center gap-3">
-            <h1>oxinbox</h1>
-            <p class="text-muted">Backend operativo</p>
-            <p class="text-sm">
-              <a href="/health" style="color:var(--primary)">Health check</a>
-            </p>
-          </div>
-        </div>`;
-    });
-  </script>
-  <script src="/sw.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#08080e" />
+    <meta name="description" content="oxinbox — Productividad asistida por IA. Captura, organiza y consulta tus tareas con voz." />
+    <meta name="color-scheme" content="dark" />
+    <meta property="og:title" content="oxinbox" />
+    <meta property="og:description" content="Captura instantánea de tareas por voz con IA" />
+    <meta property="og:type" content="website" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <title>oxinbox</title>
+    <script type="module" crossorigin src="/assets/index-Bry8IEXv.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-react-C9GsPHjH.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-antd-BqA732sB.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-B710ajGr.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>

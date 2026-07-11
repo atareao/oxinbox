@@ -10,8 +10,9 @@ use web_push::{
 };
 
 use crate::auth::AuthState;
-use crate::repository::TaskRepository;
-use oxinbox_core::TaskStatus;
+use base64::Engine;
+use crate::core_types::TaskStatus;
+use p256::elliptic_curve::sec1::ToSec1Point;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PushSubscription {
@@ -22,7 +23,7 @@ pub struct PushSubscription {
 
 #[derive(Clone)]
 pub struct PushService {
-    pub subscriptions: Arc<RwLock<HashMap<i32, Vec<PushSubscription>>>>,
+    pub subscriptions: Arc<RwLock<HashMap<String, Vec<PushSubscription>>>>,
     vapid_private_key: Option<String>,
     vapid_contact: Option<String>,
 }
@@ -42,23 +43,33 @@ impl PushService {
         self.vapid_private_key.is_some()
     }
 
+    pub fn public_key(&self) -> Option<String> {
+        let key = self.vapid_private_key.as_ref()?;
+        let engine = base64::engine::general_purpose::URL_SAFE;
+        let der = engine.decode(key).ok()?;
+        let secret_key = p256::SecretKey::from_slice(&der).ok()?;
+        let public_key = secret_key.public_key();
+        let encoded = public_key.to_sec1_point(false);
+        Some(engine.encode(encoded.as_bytes()))
+    }
+
     #[instrument(skip(self))]
-    pub async fn subscribe(&self, user_id: i32, sub: PushSubscription) {
+    pub async fn subscribe(&self, user_id: &str, sub: PushSubscription) {
         self.subscriptions
             .write()
             .await
-            .entry(user_id)
+            .entry(user_id.to_string())
             .or_default()
             .push(sub);
         tracing::info!(user_id, "push subscription added");
     }
 
     #[instrument(skip(self))]
-    pub async fn unsubscribe(&self, user_id: i32, endpoint: &str) -> bool {
+    pub async fn unsubscribe(&self, user_id: &str, endpoint: &str) -> bool {
         self.subscriptions
             .write()
             .await
-            .get_mut(&user_id)
+            .get_mut(user_id)
             .is_some_and(|subs| {
                 let before = subs.len();
                 subs.retain(|s| s.endpoint != endpoint);
@@ -71,13 +82,13 @@ impl PushService {
     }
 
     #[instrument(skip(self))]
-    pub async fn notify_user(&self, user_id: i32, title: &str, body: &str) {
+    pub async fn notify_user(&self, user_id: &str, title: &str, body: &str) {
         let Some(ref key) = self.vapid_private_key else {
             tracing::warn!("VAPID not configured, cannot send push");
             return;
         };
 
-        let subs = self.subscriptions.read().await.get(&user_id).cloned();
+        let subs = self.subscriptions.read().await.get(user_id).cloned();
         let Some(subs) = subs else {
             tracing::debug!(user_id, "no push subscriptions for user");
             return;
@@ -122,7 +133,7 @@ impl PushService {
                     self.subscriptions
                         .write()
                         .await
-                        .entry(user_id)
+                        .entry(user_id.to_string())
                         .or_default()
                         .retain(|s| s.endpoint != sub.endpoint);
                 }
@@ -144,16 +155,12 @@ pub fn start_background_worker(task_state: AuthState) {
             interval.tick().await;
             tracing::debug!("background worker: checking stale inbox tasks");
 
-            let tasks = if let Some(ref db) = task_state.db {
-                match db.list(0).await {
-                    Ok(t) => t,
-                    Err(_) => continue,
-                }
-            } else {
-                let repo = crate::repository::InMemoryTaskRepository::shared();
-                match repo.list(0).await {
-                    Ok(t) => t,
-                    Err(_) => continue,
+            // Use ParadeDB directly (always available)
+            let tasks = match task_state.db.list("system").await {
+                Ok(t) => t,
+                Err(e) => {
+                    tracing::warn!(error = %e, "background worker: list failed");
+                    continue;
                 }
             };
 
@@ -181,7 +188,7 @@ pub fn start_background_worker(task_state: AuthState) {
             };
 
             let push = PushService::new();
-            push.notify_user(0, "oxinbox — Inbox estancado", &msg).await;
+            push.notify_user("system", "oxinbox — Inbox estancado", &msg).await;
         }
     });
 }

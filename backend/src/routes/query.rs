@@ -7,8 +7,7 @@ use tracing::instrument;
 
 use crate::auth::{AuthState, AuthUser};
 use crate::middleware::require_auth;
-use crate::repository::{InMemoryTaskRepository, TaskRepository};
-use oxinbox_core::Task;
+use crate::core_types::Task;
 
 #[derive(Debug, Deserialize)]
 pub struct QueryRequest {
@@ -30,8 +29,8 @@ const SQL_GEN_PROMPT: &str = concat!(
     "    completed   BOOLEAN,\n",
     "    priority    CHAR(1),\n",
     "    description TEXT,\n",
-    "    projects    TEXT[],\n",
-    "    contexts    TEXT[],\n",
+    "    project_ids UUID[],\n",
+    "    context_ids UUID[],\n",
     "    status      TEXT CHECK (status IN ('inbox', 'todo', 'doing', 'done', 'someday')),\n",
     "    created_at  TIMESTAMPTZ,\n",
     "    updated_at  TIMESTAMPTZ,\n",
@@ -40,8 +39,8 @@ const SQL_GEN_PROMPT: &str = concat!(
     ");\n\n",
     "Reglas:\n",
     "- Usa `ILIKE` para búsquedas de texto (ej: description ILIKE '%term%')\n",
-    "- projects y contexts son TEXT[], usa `array['val']` o la sintaxis `'{val}'`\n",
-    "- Para buscar en arrays usa: `'valor' = ANY(projects)`\n",
+    "- project_ids y context_ids son UUID[], usa `ANY()`\n",
+    "- Para buscar en arrays usa: `'uuid-aqui'::UUID = ANY(project_ids)`\n",
     "- status puede ser: 'inbox', 'todo', 'doing', 'done', 'someday'\n",
     "- dates están en formato ISO 8601 (YYYY-MM-DD)\n",
     "- priority es un CHAR(1): 'A', 'B', 'C', o NULL\n\n",
@@ -275,8 +274,12 @@ fn get_column_value(task: &Task, column: &str) -> ColumnValue {
         "updated_at" => ColumnValue::DateTime(Some(task.updated_at)),
         "completed_at" => ColumnValue::DateTime(task.completed_at),
         "due_date" => ColumnValue::Date(task.due_date),
-        "projects" => ColumnValue::StringArray(task.projects.clone()),
-        "contexts" => ColumnValue::StringArray(task.contexts.clone()),
+        "project_ids" => {
+            ColumnValue::StringArray(task.project_ids.iter().map(ToString::to_string).collect())
+        }
+        "context_ids" => {
+            ColumnValue::StringArray(task.context_ids.iter().map(ToString::to_string).collect())
+        }
         _ => ColumnValue::String(String::new()),
     }
 }
@@ -311,7 +314,7 @@ pub async fn handle_query(
         (StatusCode::SERVICE_UNAVAILABLE, "AI not configured".into())
     })?;
 
-    // Step 1: Generate SQL
+    // Step 1: Generate SQL from natural language
     let sql_response = ai
         .chat(
             SQL_GEN_PROMPT,
@@ -332,9 +335,8 @@ pub async fn handle_query(
     let sql = extract_sql(&sql_response);
     tracing::info!(sql = %sql, "generated SQL");
 
-    // Step 2: Execute SQL against in-memory store
-    let repo = InMemoryTaskRepository::shared();
-    let all_tasks = repo.list(0).await.map_err(|e| {
+    // Step 2: Fetch all tasks from ParadeDB and execute SQL in-memory
+    let all_tasks = state.db.list("").await.map_err(|e| {
         tracing::error!(error = %e, "list tasks for query failed");
         (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
     })?;
@@ -385,21 +387,11 @@ fn format_results(tasks: &[Task]) -> String {
         .map(|t| {
             let status = format!("{:?}", t.status).to_lowercase();
             let prio = t.priority.map_or(String::new(), |p| format!(" ({p})"));
-            let projects = if t.projects.is_empty() {
-                String::new()
-            } else {
-                format!(" +{}", t.projects.join(" +"))
-            };
-            let contexts = if t.contexts.is_empty() {
-                String::new()
-            } else {
-                format!(" @{}", t.contexts.join(" @"))
-            };
             let due = t
                 .due_date
                 .map_or(String::new(), |d| format!(" [vence: {d}]"));
             format!(
-                "- [{status}]{prio} {}{projects}{contexts}{due}",
+                "- [{status}]{prio} {}{due}",
                 t.description
             )
         })

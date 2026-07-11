@@ -35,11 +35,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev
       - name: Build release
-        run: cargo build --release --target ${{ matrix.target }} -p oxinbox-backend
+        run: cargo build --release --target ${{ matrix.target }} --manifest-path backend/Cargo.toml
       - name: Prepare archive
         run: |
-          BIN="target/${{ matrix.target }}/release/oxinbox-backend"
-          PKG="oxinbox-backend-${{ matrix.target }}"
+          BIN="target/${{ matrix.target }}/release/oxinbox"
+          PKG="oxinbox-${{ matrix.target }}"
           cp "$BIN" "$PKG"
           tar czf "$PKG.tar.gz" "$PKG"
           echo "ARTIFACT=$PKG.tar.gz" >> $GITHUB_ENV
@@ -60,7 +60,7 @@ jobs:
       - name: Generate release body
         run: |
           cat > notes.md <<'EOF'
-          ## oxinbox-backend
+          ## oxinbox
 
           ### Downloads
 
@@ -69,7 +69,7 @@ jobs:
           EOF
           for f in *.tar.gz; do
             [ -f "$f" ] || continue
-            arch=$(echo "$f" | sed 's/^oxinbox-backend-//; s/\.tar\.gz$//')
+            arch=$(echo "$f" | sed 's/^oxinbox-//; s/\.tar\.gz$//')
             echo "| \`$arch\` | \`$f\` |" >> notes.md
           done
       - name: Create release
@@ -122,13 +122,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev
-      - name: Publish oxinbox-core to crates.io
+      - name: Publish oxinbox to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         continue-on-error: true
-        run: cargo publish -p oxinbox-core
-      - name: Publish oxinbox-backend to crates.io
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        continue-on-error: true
-        run: cargo publish -p oxinbox-backend
+        run: cargo publish --manifest-path backend/Cargo.toml
