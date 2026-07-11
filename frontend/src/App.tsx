@@ -69,6 +69,7 @@ export default function App() {
           <Route index element={<SuspenseWrapper><HomePage /></SuspenseWrapper>} />
           <Route path="settings/prompts" element={<SuspenseWrapper><PromptSettingsPage /></SuspenseWrapper>} />
         </Route>
+    </Routes>
     </ErrorBoundary>
   );
 }
