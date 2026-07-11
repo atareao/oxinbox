@@ -7,6 +7,7 @@ import { Spin } from "antd";
 
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const HomePage = lazy(() => import("./pages/HomePage"));
+const PromptSettingsPage = lazy(() => import("./pages/PromptSettingsPage"));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -66,8 +67,8 @@ export default function App() {
           }
         >
           <Route index element={<SuspenseWrapper><HomePage /></SuspenseWrapper>} />
+          <Route path="settings/prompts" element={<SuspenseWrapper><PromptSettingsPage /></SuspenseWrapper>} />
         </Route>
-      </Routes>
     </ErrorBoundary>
   );
 }
