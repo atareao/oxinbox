@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::repository::RepositoryError;
 
+#[derive(Clone)]
 pub struct ParadeDbRepository {
     pool: PgPool,
 }
