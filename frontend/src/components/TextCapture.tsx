@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { Input, Spin, Typography } from "antd";
 import { SendOutlined } from "@ant-design/icons";
 import { textCapture, type Task } from "../api/http";
@@ -10,12 +10,11 @@ interface Props {
 }
 
 export default function TextCapture({ onTaskCreated }: Props) {
+  const [value, setValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleSubmit = async (value: string) => {
-    const text = value.trim();
+  const handleSubmit = async (text: string) => {
     if (!text || loading) return;
 
     setLoading(true);
@@ -24,7 +23,7 @@ export default function TextCapture({ onTaskCreated }: Props) {
     try {
       const task = await textCapture(text);
       onTaskCreated(task);
-      if (inputRef.current) inputRef.current.value = "";
+      setValue("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al crear tarea");
     } finally {
@@ -32,15 +31,20 @@ export default function TextCapture({ onTaskCreated }: Props) {
     }
   };
 
+  const handlePressEnter = () => {
+    handleSubmit(value.trim());
+  };
+
   return (
     <div style={{ marginBottom: 12 }}>
       <Input
-        ref={inputRef as React.Ref<any>}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
         placeholder="Escribe una tarea... (+proyecto @contexto prioridad:A)"
         suffix={
-          loading ? <Spin size="small" /> : <SendOutlined style={{ color: "#9494a8", cursor: "pointer" }} onClick={() => handleSubmit(inputRef.current?.value || "")} />
+          loading ? <Spin size="small" /> : <SendOutlined style={{ color: "#9494a8", cursor: "pointer" }} onClick={() => handleSubmit(value.trim())} />
         }
-        onPressEnter={(e) => handleSubmit((e.target as HTMLInputElement).value)}
+        onPressEnter={handlePressEnter}
         disabled={loading}
         style={{ fontSize: 14 }}
       />

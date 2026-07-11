@@ -9,13 +9,17 @@ import {
   Skeleton,
   Tooltip,
   Input,
+  DatePicker,
 } from "antd";
 import {
   DeleteOutlined,
   EditOutlined,
   CloseOutlined,
   CheckOutlined,
+  LeftOutlined,
+  RightOutlined,
 } from "@ant-design/icons";
+import dayjs from "dayjs";
 import {
   updateTask,
   type Task,
@@ -24,6 +28,42 @@ import {
 } from "../api/http";
 
 const { Text } = Typography;
+
+// ---------------------------------------------------------------------------
+// Cadena de estados GTD para navegación
+//
+//   Inbox ←→ Todo ←→ Doing ←→ Done
+//     ↕
+//  Someday
+// ---------------------------------------------------------------------------
+
+const STATUS_ORDER = ["inbox", "todo", "doing", "done"];
+
+function getPrevStatus(status: string): string | null {
+  if (status === "someday") return "inbox";
+  const idx = STATUS_ORDER.indexOf(status);
+  if (idx <= 0) return null;
+  return STATUS_ORDER[idx - 1];
+}
+
+function getNextStatus(status: string): string | null {
+  if (status === "someday") return null;
+  const idx = STATUS_ORDER.indexOf(status);
+  if (idx < 0 || idx >= STATUS_ORDER.length - 1) return null;
+  return STATUS_ORDER[idx + 1];
+}
+
+// ---------------------------------------------------------------------------
+// Etiquetas de estado en español
+// ---------------------------------------------------------------------------
+
+const STATUS_LABELS: Record<string, string> = {
+  inbox: "Inbox",
+  todo: "TODO",
+  doing: "Doing",
+  done: "Done",
+  someday: "Someday",
+};
 
 const statusColors: Record<string, string> = {
   inbox: "default",
@@ -59,6 +99,8 @@ interface Props {
   contextsMap: Record<string, Context>;
   onDelete: (id: string) => void;
   onRefresh: () => void;
+  onStatusChange: (id: string, newStatus: string) => Promise<void>;
+  onTaskClick?: (id: string, newStatus: string) => Promise<void>;
   loading?: boolean;
 }
 
@@ -68,6 +110,7 @@ interface EditState {
   priority: string;
   project_ids: string[];
   context_ids: string[];
+  due_date: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,13 +123,28 @@ export default function TaskList({
   contextsMap,
   onDelete,
   onRefresh,
+  onStatusChange,
+  onTaskClick,
   loading,
 }: Props) {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [editingTask, setEditingTask] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditState | null>(null);
 
-  // Iniciar edición — copia los valores actuales de la tarea
+  // Click en tarea → avanzar al siguiente estado (o editar si no hay siguiente)
+  // Ignora clicks en botones de acción
+  const handleTaskClick = (task: Task, e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("button, .ant-btn, .ant-list-item-action")) return;
+    const next = getNextStatus(task.status);
+    if (next && onTaskClick) {
+      void onTaskClick(task.id, next);
+    } else {
+      startEditing(task);
+    }
+  };
+
+  // Iniciar edición
   const startEditing = (task: Task) => {
     setEditingTask(task.id);
     setEditState({
@@ -95,6 +153,7 @@ export default function TaskList({
       priority: task.priority || "",
       project_ids: [...task.project_ids],
       context_ids: [...task.context_ids],
+      due_date: task.due_date,
     });
   };
 
@@ -115,6 +174,7 @@ export default function TaskList({
         priority: editState.priority || null,
         project_ids: editState.project_ids,
         context_ids: editState.context_ids,
+        due_date: editState.due_date || null,
       });
       cancelEditing();
       onRefresh();
@@ -144,9 +204,11 @@ export default function TaskList({
       locale={{ emptyText: "No hay tareas. Usa el micrófono o escribe una." }}
       renderItem={(task) => {
         const isEditing = editingTask === task.id;
+        const prevStatus = getPrevStatus(task.status);
+        const nextStatus = getNextStatus(task.status);
 
         // =================================================================
-        // MODO EDICIÓN — la tarea se da la vuelta
+        // MODO EDICIÓN
         // =================================================================
         if (isEditing && editState) {
           return (
@@ -178,7 +240,7 @@ export default function TaskList({
                     placeholder="Descripción de la tarea"
                   />
 
-                  {/* Fila: Estado + Prioridad */}
+                  {/* Fila: Estado + Prioridad + Fecha */}
                   <div style={{ display: "flex", gap: 8 }}>
                     <div style={{ flex: 1 }}>
                       <Text
@@ -215,6 +277,31 @@ export default function TaskList({
                           )
                         }
                         options={priorityOptions}
+                        style={{ width: "100%" }}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <Text
+                        type="secondary"
+                        style={{ fontSize: 11, display: "block", marginBottom: 2 }}
+                      >
+                        Fecha
+                      </Text>
+                      <DatePicker
+                        size="small"
+                        value={editState.due_date ? dayjs(editState.due_date) : null}
+                        onChange={(date) =>
+                          setEditState((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  due_date: date
+                                    ? date.format("YYYY-MM-DD")
+                                    : null,
+                                }
+                              : prev,
+                          )
+                        }
                         style={{ width: "100%" }}
                       />
                     </div>
@@ -302,32 +389,75 @@ export default function TaskList({
         }
 
         // =================================================================
-        // MODO VISTA — etiquetas + botón editar
+        // MODO VISTA
         // =================================================================
+
+        // Build actions: left nav, right nav, edit, delete
+        const actions: React.ReactNode[] = [];
+
+        // Botón izquierda (←) — mover al estado anterior
+        if (prevStatus) {
+          actions.push(
+            <Tooltip key="prev" title={`Mover a ${STATUS_LABELS[prevStatus]}`}>
+              <Button
+                type="text"
+                size="small"
+                icon={<LeftOutlined />}
+                onClick={() => onStatusChange(task.id, prevStatus)}
+                style={{ color: "#9494a8" }}
+              />
+            </Tooltip>,
+          );
+        }
+
+        // Botón derecha (→) — mover al estado siguiente
+        if (nextStatus) {
+          actions.push(
+            <Tooltip key="next" title={`Mover a ${STATUS_LABELS[nextStatus]}`}>
+              <Button
+                type="text"
+                size="small"
+                icon={<RightOutlined />}
+                onClick={() => onStatusChange(task.id, nextStatus)}
+                style={{ color: "#9494a8" }}
+              />
+            </Tooltip>,
+          );
+        }
+
+        // Editar
+        actions.push(
+          <Tooltip key="edit" title="Editar">
+            <Button
+              type="text"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => startEditing(task)}
+              style={{ color: "#9494a8" }}
+            />
+          </Tooltip>,
+        );
+
+        // Eliminar
+        actions.push(
+          <Tooltip key="delete" title="Eliminar">
+            <Button
+              type="text"
+              danger
+              size="small"
+              icon={<DeleteOutlined />}
+              onClick={() => onDelete(task.id)}
+            />
+          </Tooltip>,
+        );
+
         return (
           <List.Item
             className="task-enter"
-            actions={[
-              <Tooltip key="edit" title="Editar">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<EditOutlined />}
-                  onClick={() => startEditing(task)}
-                  style={{ color: "#9494a8" }}
-                />
-              </Tooltip>,
-              <Tooltip key="delete" title="Eliminar">
-                <Button
-                  type="text"
-                  danger
-                  size="small"
-                  icon={<DeleteOutlined />}
-                  onClick={() => onDelete(task.id)}
-                />
-              </Tooltip>,
-            ]}
+            actions={actions}
+            onClick={(e) => handleTaskClick(task, e)}
             style={{
+              cursor: "pointer",
               opacity: task.status === "done" ? 0.5 : 1,
               textDecoration:
                 task.status === "done" ? "line-through" : undefined,
@@ -349,9 +479,9 @@ export default function TaskList({
                   </Tag>
                 )}
 
-                {/* Estado (siempre visible) */}
+                {/* Estado */}
                 <Tag color={statusColors[task.status]} style={{ fontSize: 10 }}>
-                  {task.status}
+                  {STATUS_LABELS[task.status] || task.status}
                 </Tag>
 
                 {/* Proyectos */}
@@ -382,7 +512,7 @@ export default function TaskList({
                   ) : null;
                 })}
 
-                {/* Fecha */}
+                {/* Fecha de cumplimiento */}
                 {task.due_date && (
                   <Text type="secondary" style={{ fontSize: 11 }}>
                     📅 {new Date(task.due_date).toLocaleDateString("es")}

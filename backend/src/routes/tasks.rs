@@ -55,6 +55,22 @@ pub struct CreateTaskRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct UpdateTaskRequest {
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub priority: Option<Option<char>>,
+    #[serde(default)]
+    pub project_ids: Option<Vec<Uuid>>,
+    #[serde(default)]
+    pub context_ids: Option<Vec<Uuid>>,
+    #[serde(default)]
+    pub due_date: Option<Option<chrono::NaiveDate>>,
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct SearchRequest {
     pub query: String,
     pub limit: Option<usize>,
@@ -310,7 +326,7 @@ pub async fn update_task(
     State(state): State<AuthState>,
     Extension(_user): Extension<AuthUser>,
     Path(id): Path<Uuid>,
-    Json(updates): Json<CreateTaskRequest>,
+    Json(updates): Json<UpdateTaskRequest>,
 ) -> Result<Json<Task>, (StatusCode, String)> {
     let mut task = state.db.get(id).await.map_err(|e| match e {
         RepositoryError::NotFound(_) => {
@@ -325,11 +341,21 @@ pub async fn update_task(
 
     let old = task.clone();
 
-    task.description = updates.description;
-    task.priority = updates.priority.filter(char::is_ascii_uppercase);
-    task.project_ids = updates.project_ids;
-    task.context_ids = updates.context_ids;
-    task.due_date = updates.due_date;
+    if let Some(desc) = updates.description {
+        task.description = desc;
+    }
+    if let Some(prio) = updates.priority {
+        task.priority = prio.filter(char::is_ascii_uppercase);
+    }
+    if let Some(ids) = updates.project_ids {
+        task.project_ids = ids;
+    }
+    if let Some(ids) = updates.context_ids {
+        task.context_ids = ids;
+    }
+    if let Some(date) = updates.due_date {
+        task.due_date = date;
+    }
 
     if let Some(status_str) = &updates.status {
         task.status = match status_str.to_lowercase().as_str() {
