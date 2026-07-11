@@ -3,8 +3,9 @@ use axum::{Extension, Json, http::StatusCode, middleware};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
+use crate::ai::task_builder;
 use crate::auth::{AuthState, AuthUser};
-use crate::core_types::{Context, Project, Task, TaskStatus, Uuid};
+use crate::core_types::{Context, Project, Task, Uuid};
 use crate::middleware::require_auth;
 
 // ---------------------------------------------------------------------------
@@ -41,15 +42,6 @@ pub struct ResolveResponse {
     pub resolved_contexts: Vec<Context>,
 }
 
-#[derive(Debug, Deserialize)]
-struct TextCaptureParsed {
-    description: String,
-    priority: Option<String>,
-    project_name: Option<String>,
-    context_name: Option<String>,
-    due_date: Option<String>,
-}
-
 // ---------------------------------------------------------------------------
 // Route factory
 // ---------------------------------------------------------------------------
@@ -60,170 +52,6 @@ pub fn ai_routes(state: AuthState) -> axum::Router<AuthState> {
         .route("/api/text-capture", axum::routing::post(text_capture))
         .route("/api/ai/resolve", axum::routing::post(resolve_task))
         .layer(middleware::from_fn_with_state(state, require_auth))
-}
-
-// ---------------------------------------------------------------------------
-// Prompt builder (shared with voice WS)
-// ---------------------------------------------------------------------------
-
-pub async fn build_text_capture_prompt(
-    db: &crate::database::ParadeDbRepository,
-    user_id: &str,
-) -> String {
-    let projects = db.list_projects().await.unwrap_or_default();
-    let contexts = db.list_contexts().await.unwrap_or_default();
-    let last_tasks = db.list(user_id).await.unwrap_or_default();
-
-    let project_names: Vec<&str> = projects.iter().map(|p| p.name.as_str()).collect();
-    let context_names: Vec<&str> = contexts.iter().map(|c| c.name.as_str()).collect();
-
-    let tasks_summary: String = last_tasks
-        .iter()
-        .take(10)
-        .enumerate()
-        .map(|(i, t)| {
-            let prio = t.priority.map_or(String::new(), |p| format!(" [{p}]"));
-            let proj = if t.project_ids.is_empty() {
-                String::new()
-            } else {
-                projects
-                    .iter()
-                    .find(|p| t.project_ids.contains(&p.id))
-                    .map(|p| format!(" proyecto:{}", p.name))
-                    .unwrap_or_default()
-            };
-            let ctx_str = if t.context_ids.is_empty() {
-                String::new()
-            } else {
-                contexts
-                    .iter()
-                    .find(|c| t.context_ids.contains(&c.id))
-                    .map(|c| format!(" contexto:{}", c.name))
-                    .unwrap_or_default()
-            };
-            let status = format!("{:?}", t.status).to_lowercase();
-            format!(
-                "  {}.{prio} {} ({}{}) — {status}",
-                i + 1,
-                t.description,
-                proj,
-                ctx_str,
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    format!(
-        r##"Eres un asistente que convierte texto en tareas estructuradas.
-
-Contexto actual:
-- Proyectos existentes: {}
-- Contextos existentes: {}
-- Últimas tareas (para referencia de prioridades y patrones):
-{}
-
-Debes extraer UNA SOLA tarea del texto de usuario. Si hay múltiples, elige la más importante.
-
-Analiza el texto y asigna prioridad según la urgencia implícita. Usa 'A' para muy urgente, 'B' para normal, 'C' para baja o null si no está claro.
-
-Para project_name y context_name: si existe una coincidencia clara con los existentes, úsala. Si no existe, SUGIERE un nombre nuevo y el sistema lo creará automáticamente. Si no aplica ninguno, devuelve null.
-
-Responde ÚNICAMENTE con un JSON válido, sin markdown, sin texto adicional:
-{{
-  "description": "Descripción limpia de la tarea",
-  "priority": "A" | "B" | "C" | null,
-  "project_name": "Nombre del proyecto" | null,
-  "context_name": "Nombre del contexto" | null,
-  "due_date": "YYYY-MM-DD" | null
-}}"##,
-        serde_json::to_string(&project_names).unwrap_or_default(),
-        serde_json::to_string(&context_names).unwrap_or_default(),
-        tasks_summary,
-    )
-}
-
-// ---------------------------------------------------------------------------
-// Task creator (shared with voice WS)
-// ---------------------------------------------------------------------------
-
-#[allow(clippy::too_many_arguments)]
-async fn create_task_from_parsed(
-    db: &crate::database::ParadeDbRepository,
-    ai: &dyn crate::ai::AiProvider,
-    user_id: &str,
-    description: String,
-    priority: Option<char>,
-    project_name: Option<String>,
-    context_name: Option<String>,
-    due_date: Option<String>,
-) -> Result<Task, String> {
-    let now = chrono::Utc::now();
-
-    // Resolve project
-    let project_ids = if let Some(name) = project_name {
-        if name.is_empty() {
-            vec![]
-        } else {
-            let project = db
-                .create_or_find_project(&name)
-                .await
-                .map_err(|e| format!("failed to resolve project: {e}"))?;
-            vec![project.id]
-        }
-    } else {
-        vec![]
-    };
-
-    // Resolve context
-    let context_ids = if let Some(name) = context_name {
-        if name.is_empty() {
-            vec![]
-        } else {
-            let ctx = db
-                .create_or_find_context(&name)
-                .await
-                .map_err(|e| format!("failed to resolve context: {e}"))?;
-            vec![ctx.id]
-        }
-    } else {
-        vec![]
-    };
-
-    // Parse due_date
-    let parsed_due = due_date
-        .as_deref()
-        .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok());
-
-    let task = Task {
-        id: Uuid::now_v7(),
-        completed: false,
-        priority: priority.filter(|c| ['A', 'B', 'C'].contains(c)),
-        description,
-        project_ids,
-        context_ids,
-        status: TaskStatus::Inbox,
-        created_at: now,
-        updated_at: now,
-        completed_at: None,
-        due_date: parsed_due,
-    };
-
-    let created = db
-        .create(&task, user_id)
-        .await
-        .map_err(|e| format!("failed to create task: {e}"))?;
-
-    // Generate embedding in background (best-effort)
-    let embed_text = format!(
-        "{} {}",
-        created.description,
-        created.priority.map_or(String::new(), |p| format!("({p})"))
-    );
-    if let Ok(embedding) = ai.embed(&embed_text).await {
-        let _ = db.update_embedding(created.id, &embedding).await;
-    }
-
-    Ok(created)
 }
 
 // ---------------------------------------------------------------------------
@@ -298,7 +126,7 @@ pub async fn text_capture(
     })?;
 
     // 1) Build enriched prompt
-    let system_prompt = build_text_capture_prompt(&state.db, &user.user_id).await;
+    let system_prompt = task_builder::build_task_prompt(&state.db, &user.user_id, "texto").await;
 
     // 2) Call LLM
     let llm_response = ai
@@ -319,32 +147,23 @@ pub async fn text_capture(
         })?;
 
     // 3) Parse LLM JSON response
-    let clean = llm_response
-        .trim()
-        .strip_prefix("```json")
-        .or_else(|| llm_response.trim().strip_prefix("```"))
-        .and_then(|s| s.strip_suffix("```"))
-        .map_or_else(|| llm_response.trim(), str::trim);
-
-    let parsed: TextCaptureParsed = serde_json::from_str(clean).map_err(|e| {
-        tracing::error!(error = %e, raw = %clean, "failed to parse LLM response as JSON");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("failed to parse LLM response: {e}"),
-        )
+    let parsed = task_builder::parse_llm_json(&llm_response).map_err(|e| {
+        tracing::error!(error = %e, raw = %llm_response, "failed to parse LLM response");
+        (StatusCode::INTERNAL_SERVER_ERROR, e)
     })?;
 
-    // 4) Resolve and create
-    let priority = parsed.priority.as_deref().and_then(|p| p.chars().next());
-    let created = create_task_from_parsed(
+    // 4) Load projects/contexts for auto-assign fallback
+    let projects = state.db.list_projects().await.unwrap_or_default();
+    let contexts = state.db.list_contexts().await.unwrap_or_default();
+
+    // 5) Create task (with auto-assign fallback if LLM omitted project/context)
+    let created = task_builder::create_task_from_llm(
         &state.db,
         ai.as_ref(),
         &user.user_id,
-        parsed.description,
-        priority,
-        parsed.project_name,
-        parsed.context_name,
-        parsed.due_date,
+        parsed,
+        &projects,
+        &contexts,
     )
     .await
     .map_err(|e| {

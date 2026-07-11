@@ -11,10 +11,9 @@ use axum::{
 use serde::Deserialize;
 use tracing::instrument;
 
+use crate::ai::task_builder;
 use crate::ai::{AiProvider, ChatMessage, ChatRole};
 use crate::auth::AuthState;
-use crate::core_types::{Task, TaskStatus, Uuid};
-use crate::database::ParadeDbRepository;
 
 // ---------------------------------------------------------------------------
 // Params
@@ -23,19 +22,6 @@ use crate::database::ParadeDbRepository;
 #[derive(Debug, Deserialize)]
 pub struct VoiceParams {
     pub token: String,
-}
-
-// ---------------------------------------------------------------------------
-// LLM response shape
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Deserialize)]
-struct VoiceParsedTask {
-    description: String,
-    priority: Option<String>,
-    project_name: Option<String>,
-    context_name: Option<String>,
-    due_date: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -69,182 +55,13 @@ pub async fn voice_handler(
 }
 
 // ---------------------------------------------------------------------------
-// Prompt builder
-// ---------------------------------------------------------------------------
-
-async fn build_enriched_system_prompt(db: &ParadeDbRepository, user_id: &str) -> String {
-    let projects = db.list_projects().await.unwrap_or_default();
-    let contexts = db.list_contexts().await.unwrap_or_default();
-    let last_tasks = db.list(user_id).await.unwrap_or_default();
-
-    let project_names: Vec<&str> = projects.iter().map(|p| p.name.as_str()).collect();
-    let context_names: Vec<&str> = contexts.iter().map(|c| c.name.as_str()).collect();
-
-    let tasks_summary: String = last_tasks
-        .iter()
-        .take(10)
-        .enumerate()
-        .map(|(i, t)| {
-            let prio = t.priority.map_or(String::new(), |p| format!(" [{p}]"));
-            let proj = if t.project_ids.is_empty() {
-                String::new()
-            } else {
-                // Try to find project name by ID (best-effort)
-                projects
-                    .iter()
-                    .find(|p| t.project_ids.contains(&p.id))
-                    .map(|p| format!(" proyecto:{},", p.name))
-                    .unwrap_or_default()
-            };
-            let ctx_name = if t.context_ids.is_empty() {
-                String::new()
-            } else {
-                contexts
-                    .iter()
-                    .find(|c| t.context_ids.contains(&c.id))
-                    .map(|c| format!(" contexto:{}", c.name))
-                    .unwrap_or_default()
-            };
-            let status = format!("{:?}", t.status).to_lowercase();
-            format!(
-                "  {}.{prio} {} ({}{}) — {status}",
-                i + 1,
-                t.description,
-                proj,
-                ctx_name,
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    format!(
-        r##"Eres un asistente que convierte transcripciones de voz en tareas estructuradas.
-
-Contexto actual:
-- Proyectos existentes: {}
-- Contextos existentes: {}
-- Últimas tareas (para referencia de prioridades y patrones):
-{}
-
-Debes extraer UNA SOLA tarea del texto de usuario. Si hay múltiples, elige la más importante.
-
-Analiza la transcripción y asigna prioridad según la urgencia implícita. Usa 'A' para muy urgente, 'B' para normal, 'C' para baja o null si no está claro.
-
-Para project_name y context_name: si existe una coincidencia clara con los existentes, úsala. Si no existe, SUGIERE un nombre nuevo y el sistema lo creará automáticamente. Si no aplica ninguno, devuelve null.
-
-Responde ÚNICAMENTE con un JSON válido, sin markdown, sin texto adicional:
-{{
-  "description": "Descripción limpia de la tarea",
-  "priority": "A" | "B" | "C" | null,
-  "project_name": "Nombre del proyecto" | null,
-  "context_name": "Nombre del contexto" | null,
-  "due_date": "YYYY-MM-DD" | null
-}}"##,
-        serde_json::to_string(&project_names).unwrap_or_default(),
-        serde_json::to_string(&context_names).unwrap_or_default(),
-        tasks_summary,
-    )
-}
-
-// ---------------------------------------------------------------------------
-// Task creator
-// ---------------------------------------------------------------------------
-
-#[allow(clippy::cast_possible_truncation)]
-async fn create_task_from_voice(
-    db: &ParadeDbRepository,
-    ai: &dyn AiProvider,
-    user_id: &str,
-    parsed: VoiceParsedTask,
-) -> Result<Task, String> {
-    let now = chrono::Utc::now();
-
-    // Resolve project
-    let project_ids = if let Some(name) = &parsed.project_name {
-        if name.is_empty() {
-            vec![]
-        } else {
-            let project = db
-                .create_or_find_project(name)
-                .await
-                .map_err(|e| format!("failed to resolve project: {e}"))?;
-            vec![project.id]
-        }
-    } else {
-        vec![]
-    };
-
-    // Resolve context
-    let context_ids = if let Some(name) = &parsed.context_name {
-        if name.is_empty() {
-            vec![]
-        } else {
-            let ctx = db
-                .create_or_find_context(name)
-                .await
-                .map_err(|e| format!("failed to resolve context: {e}"))?;
-            vec![ctx.id]
-        }
-    } else {
-        vec![]
-    };
-
-    // Parse priority
-    let priority = parsed
-        .priority
-        .as_deref()
-        .and_then(|p| p.chars().next())
-        .filter(|c| c.is_ascii_uppercase() && ['A', 'B', 'C'].contains(c));
-
-    // Parse due_date
-    let due_date = parsed.due_date.as_deref().and_then(|d| {
-        // Try full ISO first, then just date
-        chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
-            .ok()
-            .or_else(|| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%dT%H:%M:%S%.fZ").ok())
-    });
-
-    let task = Task {
-        id: Uuid::now_v7(),
-        completed: false,
-        priority,
-        description: parsed.description,
-        project_ids,
-        context_ids,
-        status: TaskStatus::Inbox,
-        created_at: now,
-        updated_at: now,
-        completed_at: None,
-        due_date,
-    };
-
-    let created = db
-        .create(&task, user_id)
-        .await
-        .map_err(|e| format!("failed to create task: {e}"))?;
-
-    // Generate embedding in background (best-effort)
-    let text = format!(
-        "{} {}",
-        created.description,
-        created.priority.map_or(String::new(), |p| format!("({p})"))
-    );
-    if let Ok(embedding) = ai.embed(&text).await {
-        let _ = db.update_embedding(created.id, &embedding).await;
-    }
-
-    tracing::info!(task_id = %created.id, "task created from voice");
-    Ok(created)
-}
-
-// ---------------------------------------------------------------------------
 // WebSocket message loop
 // ---------------------------------------------------------------------------
 
 async fn handle_ws(
     mut socket: WebSocket,
     ai_provider: Arc<dyn AiProvider>,
-    db: Arc<ParadeDbRepository>,
+    db: Arc<crate::database::ParadeDbRepository>,
     user_id: String,
 ) {
     let mut audio_buffer: Vec<u8> = Vec::new();
@@ -332,14 +149,16 @@ async fn handle_ws(
                     )
                     .await;
 
-                    // 2) Build enriched prompt
+                    // 2) Build enriched prompt (shared)
                     ws_send(
                         &mut socket,
                         &serde_json::json!({"type": "status", "step": "parsing"}),
                     )
                     .await;
 
-                    let system_prompt = build_enriched_system_prompt(&db, &user_id).await;
+                    let system_prompt =
+                        task_builder::build_task_prompt(&db, &user_id, "transcripciones de voz")
+                            .await;
 
                     let llm_response = match ai_provider
                         .chat(
@@ -363,18 +182,11 @@ async fn handle_ws(
                         }
                     };
 
-                    // 3) Parse LLM JSON response
-                    let clean = llm_response
-                        .trim()
-                        .strip_prefix("```json")
-                        .or_else(|| llm_response.trim().strip_prefix("```"))
-                        .and_then(|s| s.strip_suffix("```"))
-                        .map_or_else(|| llm_response.trim(), str::trim);
-
-                    let parsed: VoiceParsedTask = match serde_json::from_str(clean) {
+                    // 3) Parse LLM JSON response (shared)
+                    let parsed = match task_builder::parse_llm_json(&llm_response) {
                         Ok(p) => p,
                         Err(e) => {
-                            tracing::warn!(error = %e, raw = %clean, "failed to parse LLM response as JSON");
+                            tracing::warn!(error = %e, raw = %llm_response, "failed to parse LLM response");
                             ws_send(
                                 &mut socket,
                                 &serde_json::json!({"type": "parse_error", "raw": llm_response}),
@@ -384,14 +196,26 @@ async fn handle_ws(
                         }
                     };
 
-                    // 4) Create task
+                    // 4) Load projects/contexts for auto-assign fallback
+                    let projects = db.list_projects().await.unwrap_or_default();
+                    let contexts = db.list_contexts().await.unwrap_or_default();
+
+                    // 5) Create task via shared function (with auto-assign fallback)
                     ws_send(
                         &mut socket,
                         &serde_json::json!({"type": "status", "step": "creating"}),
                     )
                     .await;
 
-                    match create_task_from_voice(&db, ai_provider.as_ref(), &user_id, parsed).await
+                    match task_builder::create_task_from_llm(
+                        &db,
+                        ai_provider.as_ref(),
+                        &user_id,
+                        parsed,
+                        &projects,
+                        &contexts,
+                    )
+                    .await
                     {
                         Ok(task) => {
                             tracing::info!(task_id = %task.id, "task created from voice");
