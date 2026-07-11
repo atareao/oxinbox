@@ -129,26 +129,26 @@ export default function VoiceInput({ onTaskCreated }: Props) {
 
   const isBusy = step === "transcribing" || step === "parsing" || step === "creating";
 
+  const btnStyle: React.CSSProperties = { width: 40, height: 40 };
+
   return (
-    <div style={{ textAlign: "center", marginBottom: 16 }}>
+    <div>
       {step === "idle" && (
         <Button
           type="primary"
           shape="circle"
-          size="large"
-          icon={<AudioOutlined style={{ fontSize: 24 }} />}
+          icon={<AudioOutlined />}
           onClick={startRecording}
-          style={{ width: 64, height: 64 }}
+          style={btnStyle}
         />
       )}
 
       {step === "connecting" && (
         <Button
           shape="circle"
-          size="large"
-          icon={<LoadingOutlined style={{ fontSize: 24 }} />}
+          icon={<LoadingOutlined />}
           disabled
-          style={{ width: 64, height: 64 }}
+          style={btnStyle}
         />
       )}
 
@@ -156,21 +156,19 @@ export default function VoiceInput({ onTaskCreated }: Props) {
         <Button
           danger
           shape="circle"
-          size="large"
           className="pulse-recording"
-          icon={<AudioOutlined style={{ fontSize: 24 }} />}
+          icon={<AudioOutlined />}
           onClick={stopRecording}
-          style={{ width: 64, height: 64, borderColor: "#ff4d4f" }}
+          style={{ ...btnStyle, borderColor: "#ff4d4f" }}
         />
       )}
 
       {isBusy && (
         <Button
           shape="circle"
-          size="large"
-          icon={<LoadingOutlined style={{ fontSize: 24 }} />}
+          icon={<LoadingOutlined />}
           disabled
-          style={{ width: 64, height: 64 }}
+          style={btnStyle}
         />
       )}
 
@@ -178,9 +176,8 @@ export default function VoiceInput({ onTaskCreated }: Props) {
         <Button
           type="primary"
           shape="circle"
-          size="large"
-          icon={<CheckCircleOutlined style={{ fontSize: 24, color: "#22c55e" }} />}
-          style={{ width: 64, height: 64, borderColor: "#22c55e" }}
+          icon={<CheckCircleOutlined style={{ color: "#22c55e" }} />}
+          style={{ ...btnStyle, borderColor: "#22c55e" }}
         />
       )}
 
@@ -188,35 +185,34 @@ export default function VoiceInput({ onTaskCreated }: Props) {
         <Button
           danger
           shape="circle"
-          size="large"
-          icon={<CloseCircleOutlined style={{ fontSize: 24 }} />}
+          icon={<CloseCircleOutlined />}
           onClick={() => setStep("idle")}
-          style={{ width: 64, height: 64 }}
+          style={btnStyle}
         />
       )}
 
       {/* State label */}
-      <div style={{ marginTop: 8 }}>
+      <div style={{ marginTop: 4, textAlign: "center" }}>
         {step === "recording" && (
-          <Text type="warning" style={{ fontSize: 12 }}>
-            Grabando... pulsa de nuevo para enviar
+          <Text type="warning" style={{ fontSize: 11 }}>
+            Grabando...
           </Text>
         )}
         {step === "transcribing" && (
-          <Text type="secondary" style={{ fontSize: 12 }}>Transcribiendo...</Text>
+          <Text type="secondary" style={{ fontSize: 11 }}>Transcribiendo...</Text>
         )}
         {step === "parsing" && (
-          <Text type="secondary" style={{ fontSize: 12 }}>Analizando...</Text>
+          <Text type="secondary" style={{ fontSize: 11 }}>Analizando...</Text>
         )}
         {step === "creating" && (
-          <Text type="secondary" style={{ fontSize: 12 }}>Creando tarea...</Text>
+          <Text type="secondary" style={{ fontSize: 11 }}>Creando...</Text>
         )}
         {step === "done" && (
-          <Text type="success" style={{ fontSize: 12 }}>Tarea creada ✓</Text>
+          <Text type="success" style={{ fontSize: 11 }}>✓</Text>
         )}
         {step === "error" && (
-          <div>
-            <Text type="danger" style={{ fontSize: 12 }}>{errorMsg || "Error"}</Text>
+          <div style={{ textAlign: "center" }}>
+            <Text type="danger" style={{ fontSize: 11 }}>{errorMsg || "Error"}</Text>
             <Button type="link" size="small" onClick={() => setStep("idle")}>
               Reintentar
             </Button>
@@ -226,8 +222,8 @@ export default function VoiceInput({ onTaskCreated }: Props) {
 
       {/* Transcript preview */}
       {transcript && isBusy && (
-        <div style={{ marginTop: 8, padding: "6px 12px", background: "#181825", borderRadius: 6 }}>
-          <Text style={{ fontSize: 13, fontStyle: "italic" }}>"{transcript}"</Text>
+        <div style={{ marginTop: 4, padding: "4px 10px", background: "#181825", borderRadius: 6 }}>
+          <Text style={{ fontSize: 12, fontStyle: "italic" }}>"{transcript}"</Text>
         </div>
       )}
     </div>
