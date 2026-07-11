@@ -156,8 +156,17 @@ async fn handle_ws(
                     )
                     .await;
 
+                    // 2) Cargar configuración de prompts del usuario
+                    let prompt_config = db.get_prompt_config(&user_id).await
+                        .map_err(|e| {
+                            tracing::warn!(error = %e, "failed to load prompt config, using defaults");
+                            None::<crate::core_types::PromptConfig>
+                        })
+                        .ok()
+                        .flatten();
+
                     let system_prompt =
-                        task_builder::build_task_prompt(&db, &user_id, "transcripciones de voz")
+                        task_builder::build_task_prompt(&db, &user_id, "transcripciones de voz", prompt_config.as_ref())
                             .await;
 
                     let llm_response = match ai_provider

@@ -53,6 +53,15 @@ pub struct TaskHistoryEntry {
     pub changed_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PromptConfig {
+    pub user_id: String,
+    pub system_instructions: String,
+    pub few_shot_examples: String,
+    pub rules: String,
+    pub updated_at: DateTime<Utc>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
