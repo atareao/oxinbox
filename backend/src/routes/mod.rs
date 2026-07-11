@@ -3,6 +3,7 @@ pub mod auth;
 pub mod contexts;
 pub mod geo;
 pub mod projects;
+pub mod prompts;
 pub mod push_routes;
 pub mod query;
 pub mod tasks;
@@ -52,4 +53,5 @@ pub fn api_routes(state: &crate::auth::AuthState) -> axum::Router<crate::auth::A
             axum::routing::post(push_routes::unsubscribe_push),
         )
         .merge(geo::geo_routes())
+        .merge(prompts::prompt_routes(state.clone()))
 }

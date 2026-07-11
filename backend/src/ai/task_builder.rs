@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::core_types::{Context, Project, Task, TaskStatus, Uuid};
+use crate::core_types::{Context, Project, PromptConfig, Task, TaskStatus, Uuid};
 use crate::database::ParadeDbRepository;
 
 use super::{AiProvider, ChatMessage, ChatRole};
@@ -26,7 +26,16 @@ pub struct LlmParsedTask {
 ///
 /// `source` describes the input format — either `"texto"` for text-capture
 /// or `"transcripciones de voz"` for voice.
-pub async fn build_task_prompt(db: &ParadeDbRepository, user_id: &str, source: &str) -> String {
+///
+/// `config` is an optional user-customized prompt config. If provided, its
+/// sections replace the corresponding default sections. Empty strings in
+/// config fall back to the default.
+pub async fn build_task_prompt(
+    db: &ParadeDbRepository,
+    user_id: &str,
+    source: &str,
+    config: Option<&PromptConfig>,
+) -> String {
     let projects = db.list_projects().await.unwrap_or_default();
     let contexts = db.list_contexts().await.unwrap_or_default();
     let last_tasks = db.list(user_id).await.unwrap_or_default();
@@ -70,34 +79,181 @@ pub async fn build_task_prompt(db: &ParadeDbRepository, user_id: &str, source: &
         .collect::<Vec<_>>()
         .join("\n");
 
+    let projects_json = serde_json::to_string(&project_names).unwrap_or_default();
+    let contexts_json = serde_json::to_string(&context_names).unwrap_or_default();
+
+    // Pick sections from config or fall back to defaults
+    let (system_instructions_raw, few_shot_examples_raw, rules_raw) = match config {
+        Some(cfg) => (
+            if cfg.system_instructions.is_empty() {
+                DEFAULT_SYSTEM_INSTRUCTIONS
+            } else {
+                &cfg.system_instructions
+            },
+            if cfg.few_shot_examples.is_empty() {
+                DEFAULT_FEW_SHOT_EXAMPLES
+            } else {
+                &cfg.few_shot_examples
+            },
+            if cfg.rules.is_empty() {
+                DEFAULT_RULES
+            } else {
+                &cfg.rules
+            },
+        ),
+        None => (
+            DEFAULT_SYSTEM_INSTRUCTIONS,
+            DEFAULT_FEW_SHOT_EXAMPLES,
+            DEFAULT_RULES,
+        ),
+    };
+
+    // Replace placeholders in each section
+    let system_instructions = system_instructions_raw
+        .replace("{{source}}", source)
+        .replace("{{projects}}", &projects_json)
+        .replace("{{contexts}}", &contexts_json)
+        .replace("{{recent_tasks}}", &tasks_summary);
+
+    let few_shot_examples = few_shot_examples_raw
+        .replace("{{source}}", source)
+        .replace("{{projects}}", &projects_json)
+        .replace("{{contexts}}", &contexts_json)
+        .replace("{{recent_tasks}}", &tasks_summary);
+
+    let rules = rules_raw.replace("{{source}}", source);
+
+    // Assemble final prompt
     format!(
-        r##"Eres un asistente que convierte {source} en tareas estructuradas.
+        "{system_instructions}\n\n{}{}\n{}\n{RESPONSE_FORMAT}",
+        FEW_SHOT_HEADER, few_shot_examples, rules,
+    )
+}
 
-Contexto actual:
-- Proyectos existentes: {}
-- Contextos existentes: {}
-- Últimas tareas (para referencia de prioridades y patrones):
-{}
+// ---------------------------------------------------------------------------
+// Default prompt sections (used when user has no saved config)
+// ---------------------------------------------------------------------------
 
-Debes extraer UNA SOLA tarea del texto de usuario. Si hay múltiples, elige la más importante.
+pub const DEFAULT_SYSTEM_INSTRUCTIONS: &str = r##"Eres un asistente que convierte {{source}} en tareas estructuradas siguiendo la metodología GTD (Getting Things Done).
 
-Analiza el texto y asigna prioridad según la urgencia implícita. Usa 'A' para muy urgente, 'B' para normal, 'C' para baja o null si no está claro.
+Contexto actual del usuario:
+- Proyectos existentes: {{projects}}
+- Contextos existentes: {{contexts}}
+- Últimas tareas (para referencia de patrones y prioridades):
+{{recent_tasks}}"##;
 
-Para project_name y context_name: si existe una coincidencia clara con los existentes, úsala. Si no existe, SUGIERE un nombre nuevo y el sistema lo creará automáticamente. Si no aplica ninguno, devuelve null.
+const FEW_SHOT_HEADER: &str = "--- EJEMPLOS ---\n\n";
+
+pub const DEFAULT_FEW_SHOT_EXAMPLES: &str = r##"Usuario: "Añade pepinillos a la lista de la compra"
+{{
+  "description": "Pepinillos",
+  "priority": "B",
+  "project_name": "Lista de la compra",
+  "context_name": "Casa",
+  "due_date": null
+}}
+
+Usuario: "Comprar leche"
+{{
+  "description": "Comprar leche",
+  "priority": "B",
+  "project_name": null,
+  "context_name": null,
+  "due_date": null
+}}
+
+Usuario: "Llamar al fontanero urgente @casa"
+{{
+  "description": "Llamar al fontanero",
+  "priority": "A",
+  "project_name": null,
+  "context_name": "casa",
+  "due_date": null
+}}
+
+Usuario: "Preparar presentación para la reunión del jueves +proyecto-ventas prioridad:A"
+{{
+  "description": "Preparar presentación para la reunión del jueves",
+  "priority": "A",
+  "project_name": "proyecto-ventas",
+  "context_name": "Trabajo",
+  "due_date": null
+}}
+
+Usuario: "No olvidar que tengo que pedir cita con el médico para el 15 de agosto"
+{{
+  "description": "Pedir cita con el médico",
+  "priority": "B",
+  "project_name": null,
+  "context_name": "Personal",
+  "due_date": "2026-08-15"
+}}
+
+Usuario: "Apuntar revisión del coche +mantenimiento-coche para:2026-08-01"
+{{
+  "description": "Revisión del coche",
+  "priority": "B",
+  "project_name": "mantenimiento-coche",
+  "context_name": "Personal",
+  "due_date": "2026-08-01"
+}}"##;
+
+pub const DEFAULT_RULES: &str = r##"--- REGLAS GENERALES ---
+
+1. Extrae **UNA SOLA tarea**. Si hay múltiples ideas, elige la más importante o la primera.
+
+2. La **description** debe ser la acción concreta, limpia y sin palabras de relleno.
+   - "Añade pepinillos a la lista de la compra" → description: "Pepinillos"
+   - "No olvidar comprar leche" → description: "Comprar leche"
+   - "Apúntate que tengo que llamar al fontanero" → description: "Llamar al fontanero"
+   - "Recordar cita con el dentista el viernes" → description: "Cita con el dentista"
+
+3. **prioridad**: A (urgente), B (normal), C (baja), null (sin determinar).
+   - Si menciona "urgente", "crítico", "ya" → A
+   - "importante", "pronto" → B
+   - "cuando pueda", "sin prisa", "algún día" → C
+   - Por defecto → B
+
+--- MARCADORES EXPLÍCITOS (prevalecen sobre inferencia) ---
+
+- **@nombre** → context_name exacto. Ej: "@trabajo", "@casa", "@personal"
+- **+nombre** → project_name exacto. Ej: "+web", "+lista-de-la-compra"
+- **prioridad:X** → priority explícita. Ej: "prioridad:A"
+- **para:YYYY-MM-DD** o **vencimiento:YYYY-MM-DD** → due_date
+
+Los marcadores @ + prioridad: se eliminan de la description final.
+
+--- INFERENCIA DE PROYECTO Y CONTEXTO DESDE LENGUAJE NATURAL ---
+
+Si NO hay marcadores explícitos (@ +), infiere proyecto y contexto así:
+
+**Patrones para inferir project_name:**
+- "a la lista de [nombre]" → project_name: "[nombre]" (ej: "a la lista de la compra" → "Lista de la compra")
+- "para [proyecto]" → project_name: "[proyecto]" (ej: "para la web" → "Web")
+- "del proyecto [nombre]" → project_name: "[nombre]"
+- "de [proyecto]" → project_name podría ser "[proyecto]" si es un nombre concreto
+- Cualquier sustantivo que funcione como categoría de tareas puede ser un proyecto
+
+**Patrones para inferir context_name:**
+- "en [lugar]" → context refleja el lugar (ej: "en la oficina" → "Trabajo", "en casa" → "Casa")
+- "para casa" → context: "Casa"
+- "para el trabajo" → context: "Trabajo"
+- Si el proyecto es "Lista de la compra" → context sugerido: "Casa"
+- Si el proyecto es "Web", "Servidor", "Backend" → context sugerido: "Trabajo"
+- Si el proyecto es "Personal", "Música", "Lectura" → context sugerido: "Personal"
+- Si hay coincidencia clara con contextos existentes, úsala. Si no, sugiere el nombre."##;
+
+const RESPONSE_FORMAT: &str = r##"
+--- FORMATO DE RESPUESTA ---
 
 Responde ÚNICAMENTE con un JSON válido, sin markdown, sin texto adicional:
 {{
   "description": "Descripción limpia de la tarea",
   "priority": "A" | "B" | "C" | null,
-  "project_name": "Nombre del proyecto" | null,
-  "context_name": "Nombre del contexto" | null,
+  "project_name": "Nombre del proyecto exacto (coincide con existentes o sugiere nuevo)" | null,
+  "context_name": "Nombre del contexto exacto (coincide con existentes o sugiere nuevo)" | null,
   "due_date": "YYYY-MM-DD" | null
-}}"##,
-        serde_json::to_string(&project_names).unwrap_or_default(),
-        serde_json::to_string(&context_names).unwrap_or_default(),
-        tasks_summary,
-    )
-}
+}}"##;
 
 // ---------------------------------------------------------------------------
 // LLM JSON parser — strips markdown fences

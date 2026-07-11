@@ -125,8 +125,22 @@ pub async fn text_capture(
         (StatusCode::SERVICE_UNAVAILABLE, "AI not configured".into())
     })?;
 
-    // 1) Build enriched prompt
-    let system_prompt = task_builder::build_task_prompt(&state.db, &user.user_id, "texto").await;
+    // 1) Cargar configuración de prompts del usuario (si existe)
+    let prompt_config = state
+        .db
+        .get_prompt_config(&user.user_id)
+        .await
+        .map_err(|e| {
+            tracing::warn!(error = %e, "failed to load prompt config, using defaults");
+            None::<crate::core_types::PromptConfig>
+        })
+        .ok()
+        .flatten();
+
+    // 2) Build enriched prompt with optional config
+    let system_prompt =
+        task_builder::build_task_prompt(&state.db, &user.user_id, "texto", prompt_config.as_ref())
+            .await;
 
     // 2) Call LLM
     let llm_response = ai

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::core_types::{Context, Project, Task, TaskHistoryEntry, TaskStatus};
+use crate::core_types::{Context, Project, PromptConfig, Task, TaskHistoryEntry, TaskStatus};
 use sqlx::PgPool;
 use tracing::instrument;
 use uuid::Uuid;
@@ -449,6 +449,54 @@ impl ParadeDbRepository {
 }
 
 // ---------------------------------------------------------------------------
+// Prompt configs
+// ---------------------------------------------------------------------------
+impl ParadeDbRepository {
+    pub async fn get_prompt_config(
+        &self,
+        user_id: &str,
+    ) -> Result<Option<PromptConfig>, RepositoryError> {
+        let row = sqlx::query_as::<_, PromptConfigRow>(
+            "SELECT user_id, system_instructions, few_shot_examples, rules, updated_at \
+             FROM prompt_configs WHERE user_id = $1",
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(RepositoryError::from)?;
+
+        Ok(row.map(PromptConfigRow::into_config))
+    }
+
+    pub async fn upsert_prompt_config(
+        &self,
+        config: &PromptConfig,
+    ) -> Result<PromptConfig, RepositoryError> {
+        let row = sqlx::query_as::<_, PromptConfigRow>(
+            r"INSERT INTO prompt_configs (user_id, system_instructions, few_shot_examples, rules, updated_at)
+               VALUES ($1, $2, $3, $4, $5)
+               ON CONFLICT (user_id) DO UPDATE SET
+                   system_instructions = EXCLUDED.system_instructions,
+                   few_shot_examples = EXCLUDED.few_shot_examples,
+                   rules = EXCLUDED.rules,
+                   updated_at = EXCLUDED.updated_at
+               RETURNING user_id, system_instructions, few_shot_examples, rules, updated_at",
+        )
+        .bind(&config.user_id)
+        .bind(&config.system_instructions)
+        .bind(&config.few_shot_examples)
+        .bind(&config.rules)
+        .bind(config.updated_at)
+        .fetch_one(&self.pool)
+        .await
+        .map(PromptConfigRow::into_config)
+        .map_err(RepositoryError::from)?;
+
+        Ok(row)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Row mappers
 // ---------------------------------------------------------------------------
 
@@ -596,6 +644,31 @@ impl FieldChangeRow {
             old_value: self.old_value,
             new_value: self.new_value,
             changed_at: self.changed_at,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PromptConfig row
+// ---------------------------------------------------------------------------
+
+#[derive(sqlx::FromRow)]
+struct PromptConfigRow {
+    user_id: String,
+    system_instructions: String,
+    few_shot_examples: String,
+    rules: String,
+    updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl PromptConfigRow {
+    fn into_config(self) -> PromptConfig {
+        PromptConfig {
+            user_id: self.user_id,
+            system_instructions: self.system_instructions,
+            few_shot_examples: self.few_shot_examples,
+            rules: self.rules,
+            updated_at: self.updated_at,
         }
     }
 }

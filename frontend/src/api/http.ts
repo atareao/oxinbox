@@ -140,3 +140,29 @@ export async function queryTasks(query: string): Promise<{
 }> {
   return fetcher("/api/query", { method: "POST", body: { query } });
 }
+
+// ---------------------------------------------------------------------------
+// Prompt Config
+// ---------------------------------------------------------------------------
+
+export interface PromptConfig {
+  user_id: string;
+  system_instructions: string;
+  few_shot_examples: string;
+  rules: string;
+  updated_at: string;
+}
+
+export interface UpdatePromptRequest {
+  system_instructions: string;
+  few_shot_examples: string;
+  rules: string;
+}
+
+export async function fetchPromptConfig(): Promise<PromptConfig> {
+  return fetcher<PromptConfig>("/api/prompts");
+}
+
+export async function updatePromptConfig(data: UpdatePromptRequest): Promise<PromptConfig> {
+  return fetcher<PromptConfig>("/api/prompts", { method: "PUT", body: data });
+}

@@ -1,5 +1,5 @@
 import { Layout, Button, Typography, Space } from "antd";
-import { LogoutOutlined, QuestionOutlined } from "@ant-design/icons";
+import { LogoutOutlined, QuestionOutlined, SettingOutlined } from "@ant-design/icons";
 import { Outlet, useNavigate } from "react-router-dom";
 import { clearToken } from "../store/auth";
 import { useState } from "react";
@@ -35,6 +35,12 @@ export default function AppLayout() {
             </Text>
           </Space>
           <Space size={4}>
+            <Button
+              type="text"
+              icon={<SettingOutlined />}
+              onClick={() => navigate("/settings/prompts")}
+              style={{ color: "#9494a8" }}
+            />
             <Button
               type="text"
               icon={<QuestionOutlined />}
