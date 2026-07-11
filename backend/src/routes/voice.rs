@@ -165,9 +165,13 @@ async fn handle_ws(
                         .ok()
                         .flatten();
 
-                    let system_prompt =
-                        task_builder::build_task_prompt(&db, &user_id, "transcripciones de voz", prompt_config.as_ref())
-                            .await;
+                    let system_prompt = task_builder::build_task_prompt(
+                        &db,
+                        &user_id,
+                        "transcripciones de voz",
+                        prompt_config.as_ref(),
+                    )
+                    .await;
 
                     let llm_response = match ai_provider
                         .chat(

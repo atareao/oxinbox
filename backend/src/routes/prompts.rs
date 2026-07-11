@@ -1,11 +1,13 @@
-use axum::{Extension, Json, extract::State};
 use axum::http::StatusCode;
+use axum::{Extension, Json, extract::State};
 use serde::Deserialize;
 use tracing::instrument;
 
+use crate::ai::task_builder::{
+    DEFAULT_FEW_SHOT_EXAMPLES, DEFAULT_RULES, DEFAULT_SYSTEM_INSTRUCTIONS,
+};
 use crate::auth::{AuthState, AuthUser};
 use crate::core_types::PromptConfig;
-use crate::ai::task_builder::{DEFAULT_SYSTEM_INSTRUCTIONS, DEFAULT_FEW_SHOT_EXAMPLES, DEFAULT_RULES};
 
 #[derive(Debug, Deserialize)]
 pub struct UpdatePromptRequest {
@@ -15,15 +17,18 @@ pub struct UpdatePromptRequest {
 }
 
 pub fn prompt_routes(state: AuthState) -> axum::Router<AuthState> {
-    use axum::routing::get;
     use axum::middleware;
+    use axum::routing::get;
 
     axum::Router::new()
         .route(
             "/api/prompts",
             get(get_prompt_config).put(update_prompt_config),
         )
-        .layer(middleware::from_fn_with_state(state, crate::middleware::require_auth))
+        .layer(middleware::from_fn_with_state(
+            state,
+            crate::middleware::require_auth,
+        ))
 }
 
 #[instrument(skip(state, user), fields(user_id = %user.user_id))]

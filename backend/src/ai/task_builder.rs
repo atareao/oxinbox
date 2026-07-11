@@ -101,7 +101,11 @@ pub async fn build_task_prompt(
                 &cfg.rules
             },
         ),
-        None => (DEFAULT_SYSTEM_INSTRUCTIONS, DEFAULT_FEW_SHOT_EXAMPLES, DEFAULT_RULES),
+        None => (
+            DEFAULT_SYSTEM_INSTRUCTIONS,
+            DEFAULT_FEW_SHOT_EXAMPLES,
+            DEFAULT_RULES,
+        ),
     };
 
     // Replace placeholders in each section
@@ -120,10 +124,9 @@ pub async fn build_task_prompt(
     let rules = rules_raw.replace("{{source}}", source);
 
     // Assemble final prompt
-    format!("{system_instructions}\n\n{}{}\n{}\n{RESPONSE_FORMAT}",
-        FEW_SHOT_HEADER,
-        few_shot_examples,
-        rules,
+    format!(
+        "{system_instructions}\n\n{}{}\n{}\n{RESPONSE_FORMAT}",
+        FEW_SHOT_HEADER, few_shot_examples, rules,
     )
 }
 
