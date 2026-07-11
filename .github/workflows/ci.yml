@@ -3,6 +3,8 @@ name: CI
 on:
   pull_request:
     branches: [main, development]
+  push:
+    branches: [main, development]
 
 jobs:
   check:
@@ -18,12 +20,12 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Clippy (native)
-        run: cargo clippy --workspace --exclude oxinbox-frontend -- -D warnings
+        run: cargo clippy --manifest-path backend/Cargo.toml -- -D warnings
       - name: Clippy (WASM)
         run: cargo clippy --target wasm32-unknown-unknown -p oxinbox-frontend -- -D warnings
       - name: Build native
-        run: cargo build --release --workspace --exclude oxinbox-frontend
+        run: cargo build --release --manifest-path backend/Cargo.toml
       - name: Build frontend WASM
         run: cargo build --release --target wasm32-unknown-unknown -p oxinbox-frontend
       - name: Run tests
-        run: cargo test --workspace --exclude oxinbox-frontend
+        run: cargo test --manifest-path backend/Cargo.toml

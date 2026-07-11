@@ -12,7 +12,7 @@ use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
-use oxinbox_backend::{ai, auth, database, db, push, routes};
+use oxinbox::{ai, auth, database, db, push, routes};
 
 #[tokio::main]
 async fn main() {
@@ -32,25 +32,24 @@ async fn main() {
     }
 
     dotenvy::dotenv().ok();
+    // jsonwebtoken requires an explicit CryptoProvider (install before any JWT ops)
+    jsonwebtoken::crypto::rust_crypto::DEFAULT_PROVIDER
+        .install_default()
+        .expect("failed to install jsonwebtoken Cryptoprovider");
     tracing::info!("oxinbox backend starting");
 
-    let pool = if let Ok(database_url) = std::env::var("DATABASE_URL") {
-        let pool = db::create_pool(&database_url)
-            .await
-            .expect("failed to connect to database");
-        db::run_migrations(&pool)
-            .await
-            .expect("failed to run migrations");
-        tracing::info!("database connected and migrated");
-        Some(pool)
-    } else {
-        tracing::warn!("DATABASE_URL not set, running without database");
-        None
-    };
+    // Database is required — no ParadeDB, no party
+    let database_url =
+        std::env::var("DATABASE_URL").expect("DATABASE_URL is required (ParadeDB / PostgreSQL)");
+    let pool = db::create_pool(&database_url)
+        .await
+        .expect("failed to connect to database");
+    db::run_migrations(&pool)
+        .await
+        .expect("failed to run migrations");
+    tracing::info!("database connected and migrated");
 
-    let db_repo = pool
-        .as_ref()
-        .map(|p| database::ParadeDbRepository::arc_new(p.clone()));
+    let db_repo = database::ParadeDbRepository::arc_new(pool);
 
     let ai_provider = match ai::create_provider() {
         Ok(provider) => {
@@ -66,8 +65,8 @@ async fn main() {
     let push_service = push::PushService::new();
     let auth_state = auth::AuthState::new(ai_provider, db_repo, push_service);
     tracing::info!(
-        "WebAuthn configured: rp_id={rp_id}",
-        rp_id = std::env::var("RP_ID").unwrap_or_else(|_| "localhost".into())
+        "OIDC configured: issuer={}",
+        auth_state.oidc.issuer
     );
 
     push::start_background_worker(auth_state.clone());

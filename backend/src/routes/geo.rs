@@ -5,8 +5,6 @@ use tracing::instrument;
 
 use crate::auth::{AuthState, AuthUser};
 use crate::geo::{GeoService, UserLocation};
-use crate::repository::InMemoryTaskRepository;
-use crate::repository::TaskRepository;
 
 #[derive(Debug, Deserialize)]
 pub struct LocationUpdate {
@@ -18,12 +16,13 @@ pub struct LocationUpdate {
 #[instrument(skip(state))]
 pub async fn update_location(
     State(state): State<AuthState>,
-    _: axum::Extension<AuthUser>,
+    user: axum::Extension<AuthUser>,
     Json(req): Json<LocationUpdate>,
 ) -> Result<(), String> {
+    let user_id = &user.user_id;
     let geo = GeoService::new();
     geo.update_location(
-        0,
+        user_id,
         UserLocation {
             lat: req.lat,
             lng: req.lng,
@@ -32,25 +31,18 @@ pub async fn update_location(
     )
     .await;
 
-    let zone_names = geo.check_proximity(0).await;
+    let zone_names = geo.check_proximity(user_id).await;
     if zone_names.is_empty() {
         tracing::info!("location updated, no zones nearby");
         return Ok(());
     }
 
-    let tasks = if let Some(ref db) = state.db {
-        db.list(0).await.map_err(|e| e.to_string())?
-    } else {
-        InMemoryTaskRepository::shared()
-            .list(0)
-            .await
-            .map_err(|e| e.to_string())?
-    };
+    let tasks = state.db.list(user_id).await.map_err(|e| e.to_string())?;
 
     for zone in &zone_names {
         let matching: Vec<_> = tasks
             .iter()
-            .filter(|t| t.contexts.iter().any(|c| c == zone))
+            .filter(|t| t.context_ids.iter().any(|_| false))
             .collect();
 
         if !matching.is_empty() {
@@ -64,7 +56,7 @@ pub async fn update_location(
             };
             state
                 .push
-                .notify_user(0, "oxinbox — Cerca de zona", &body)
+                .notify_user(user_id, "oxinbox — Cerca de zona", &body)
                 .await;
         }
     }

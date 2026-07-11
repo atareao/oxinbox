@@ -18,6 +18,9 @@ Este proyecto sigue **Git Flow** con versionado semántico automático.
 ```bash
 git checkout development && git pull origin development
 git checkout -b feature/mi-feature
+# Verifica que clippy pasa antes de commitear
+cargo clippy --manifest-path backend/Cargo.toml -- -D warnings
+
 git commit -m "✨ feat: add dark mode toggle"
 git push origin feature/mi-feature
 # Crear Pull Request a development en GitHub
@@ -28,6 +31,8 @@ git push origin feature/mi-feature
 ```bash
 git checkout main && git pull origin main
 git checkout -b hotfix/arreglo-critico
+# Verifica que clippy pasa antes de commitear
+cargo clippy --manifest-path backend/Cargo.toml -- -D warnings
 git commit -m "🚑️ hotfix: crash on empty input"
 git push origin hotfix/arreglo-critico
 # Crear Pull Request a main en GitHub

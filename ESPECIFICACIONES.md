@@ -2,36 +2,31 @@
 
 ## Herramienta de Productividad GTD Invisible y Asistida por IA
 
-`oxinbox` es una aplicación web progresiva (PWA) de alta velocidad orientada a la metodología GTD (Getting Things Done) y desarrollada íntegramente en **Rust**. Su pilar fundamental es la **fricción cero**: permitir al usuario vaciar su mente de forma instantánea a través de comandos de voz y texto procesados por un Modelo de Lenguaje (LLM), eliminando la necesidad de organizar metadatos manualmente y permitiendo consultas conversacionales avanzadas sobre el historial y planificación del usuario.
+`oxinbox` es una aplicación web progresiva (PWA) de alta velocidad orientada a la metodología GTD (Getting Things Done). Su pilar fundamental es la **fricción cero**: permitir al usuario vaciar su mente de forma instantánea a través de comandos de voz y texto procesados por un Modelo de Lenguaje (LLM), eliminando la necesidad de organizar metadatos manualmente y permitiendo consultas conversacionales avanzadas sobre el historial y planificación del usuario.
 
 ---
 
-## 1. Arquitectura del Sistema: Cargo Workspace
-
-Para maximizar la eficiencia y evitar la duplicación de código, el proyecto se organiza como un espacio de trabajo de Cargo mono-repositorio, compartiendo estructuras de datos nativas entre el cliente WebAssembly y el servidor en Rust.
+## 1. Arquitectura del Sistema
 
 ```text
 oxinbox/
-├── Cargo.toml                  # Raíz del Workspace
-├── core/                       # Biblioteca de estructuras y lógica compartida
-│   ├── Cargo.toml
+├── core/                       # Biblioteca de estructuras y lógica compartida (Rust)
 │   └── src/lib.rs
 ├── backend/                    # Servidor API HTTP/WebSockets (Axum + ParadeDB)
-│   ├── Cargo.toml
 │   └── src/
 │       ├── main.rs
-│       ├── auth.rs             # WebAuthn / Passkeys
+│       ├── auth.rs             # OIDC / JWT (PocketId)
 │       ├── database.rs         # Pool de conexiones y consultas ParadeDB
 │       ├── ai.rs               # Integración con Whisper, LLM y Text-to-SQL
 │       └── push.rs             # Motor de notificaciones web push
-└── frontend/                   # Interfaz PWA en WebAssembly (Dioxus)
-    ├── Cargo.toml
-    ├── Dioxus.toml
+└── frontend/                   # Interfaz PWA en React + Vite + TypeScript
+    ├── package.json
+    ├── vite.config.ts
     └── src/
-        ├── main.rs
-        ├── storage.rs          # Sincronización local con IndexedDB
-        └── components/         # Chat de voz, Kanban, Calendario
-
+        ├── main.tsx
+        ├── api/                # Cliente HTTP tipado
+        ├── store/              # Auth (sessionStorage), IndexedDB (Dexie.js)
+        └── components/         # Voz, Kanban, Calendario, Chat
 ```
 
 ### `Cargo.toml` (Raíz del Workspace)
@@ -42,7 +37,6 @@ resolver = "2"
 members = [
     "core",
     "backend",
-    "frontend"
 ]
 
 [workspace.dependencies]
@@ -197,12 +191,14 @@ FOR EACH ROW EXECUTE FUNCTION process_task_modifications();
 
 ---
 
-## 4. Estrategia de Autenticación Fricción Cero: WebAuthn
+## 4. Estrategia de Autenticación: OIDC via PocketId
 
-Para evitar pantallas de login complejas y contraseñas obsoletas, `oxinbox` implementa el estándar biométrico **WebAuthn (Passkeys)** mediante el ecosistema `webauthn-rs`.
+Para evitar pantallas de login complejas y contraseñas obsoletas, `oxinbox` delega la autenticación en **PocketId** (self-hosted), un proveedor OIDC ligero que utiliza **WebAuthn (Passkeys)** como único factor.
 
-1. **Persistencia:** Una vez validada la firma criptográfica del dispositivo móvil o escritorio, el backend de Axum expide un **Token de Sesión de Larga Duración** (almacenado en la tabla `sessions` con caducidad a 1 año) que se guarda localmente en la PWA.
-2. **Validación:** El middleware de Axum intercepta las cabeceras HTTP (`Authorization: Bearer <TOKEN>`) y valida la sesión contra la base de datos en menos de $1\text{ ms}$, exponiendo un struct `AuthUser` seguro a los endpoints protegidos.
+1. **Flujo OIDC Authorization Code**: El frontend redirige a `/auth/login` → el backend redirige a PocketId → el usuario autentica con su passkey → PocketId redirige a `/auth/callback` con un `code` → el backend canjea el `code` por tokens y devuelve una página HTML mínima que almacena el JWT en `sessionStorage`.
+2. **Validación**: El middleware de Axum intercepta las cabeceras HTTP (`Authorization: Bearer <JWT>`) y valida el token contra la JWKS de PocketId (RS256), exponiendo un struct `AuthUser` seguro a los endpoints protegidos.
+3. **Sesiones**: No hay sesiones locales. El JWT de PocketId (validez 1 año) es el único token de sesión, verificado criptográficamente en cada petición.
+4. **Dev bypass**: El endpoint `/auth/dev-login?email=...` genera un JWT simulado para desarrollo local sin PocketId.
 
 ---
 
@@ -299,10 +295,10 @@ ORDER BY h.changed_at ASC;
 
 ## 7. Sincronización Offline y Ciclo de Vida PWA
 
-La interfaz construida con **Dioxus (WebAssembly)** se comporta de forma totalmente autónoma cuando no detecta conectividad de red:
+La interfaz construida con **React** se comporta de forma totalmente autónoma cuando no detecta conectividad de red:
 
-* **Escrituras Offline (Optimistas):** Las inserciones y transiciones del Kanban modifican inmediatamente el estado reactivo local respaldado por **IndexedDB**, garantizando tiempos de respuesta de $0\text{ ms}$ en la interfaz.
-* **Cola de Sincronización en Lote:** Al restablecerse la conexión de red (evento `online`), un Service Worker en segundo plano procesa las mutaciones encoladas enviándolas en lote (*batch transaction*) al backend.
+* **Escrituras Offline (Optimistas):** Las inserciones y transiciones del Kanban escriben primero a **IndexedDB** (Dexie.js), garantizando tiempos de respuesta de $0\text{ ms}$ en la interfaz. Las operaciones se encolan en `pending_ops` con el token JWT.
+* **Cola de Sincronización en Lote:** Al restablecerse la conexión de red (evento `online`), el hook `useSync` procesa las mutaciones encoladas en orden cronológico. El Service Worker también ejecuta `syncPendingOps` en segundo plano mediante el evento `sync`.
 * **Resolución de Conflictos:** Se aplica la política *Last-Write-Wins* evaluando la marca temporal estricta de `updated_at`. La base de datos mantiene las versiones anteriores en `task_history` permitiendo reversiones lógicas si el usuario lo solicita a la IA.
 
 ---

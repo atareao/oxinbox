@@ -24,6 +24,13 @@ jobs:
         with:
           tool: git-cliff
       - uses: Swatinem/rust-cache@v2
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - name: Clippy check
+        run: cargo clippy --manifest-path backend/Cargo.toml -- -D warnings
       - name: Install vampus
         run: cargo install vampus --git https://github.com/atareao/vampus
       - name: Determine bump type from commits
