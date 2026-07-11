@@ -1,9 +1,15 @@
 # Changelog
+## [0.1.14] - 2026-07-11
+
+### Styling
+
+- Apply cargo fmt to all backend files
 ## [0.1.13] - 2026-07-11
 
 ### Miscellaneous Tasks
 
 - Fix fmt and bump detection after workspace restructure
+- Release v0.1.13
 ## [0.1.12] - 2026-07-11
 
 ### Features
