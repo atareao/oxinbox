@@ -1,13 +1,17 @@
 use axum::extract::State;
 use axum::{Extension, Json, http::StatusCode, middleware};
-use chrono::{DateTime, NaiveDate, Utc};
-use regex::Regex;
 use serde::{Deserialize, Serialize};
+use sqlx::AssertSqlSafe;
+use sqlx::Row;
 use tracing::instrument;
 
 use crate::auth::{AuthState, AuthUser};
-use crate::core_types::Task;
+use crate::core_types::{Task, TaskStatus, Uuid};
 use crate::middleware::require_auth;
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
 pub struct QueryRequest {
@@ -20,6 +24,10 @@ pub struct QueryResponse {
     pub results: Vec<Task>,
     pub answer: String,
 }
+
+// ---------------------------------------------------------------------------
+// Prompts
+// ---------------------------------------------------------------------------
 
 const SQL_GEN_PROMPT: &str = concat!(
     "Eres un asistente que convierte preguntas en lenguaje natural a SQL para PostgreSQL.\n\n",
@@ -44,11 +52,17 @@ const SQL_GEN_PROMPT: &str = concat!(
     "- status puede ser: 'inbox', 'todo', 'doing', 'done', 'someday'\n",
     "- dates están en formato ISO 8601 (YYYY-MM-DD)\n",
     "- priority es un CHAR(1): 'A', 'B', 'C', o NULL\n\n",
+    "Siempre usa SELECT * y no añadas más columnas de las necesarias.\n\n",
     "Responde ÚNICAMENTE con la sentencia SQL, sin explicaciones ni formato markdown.",
 );
 
 const NL_PROMPT_PREFIX: &str = "Eres un asistente que responde preguntas sobre tareas en español.\n\nLa pregunta del usuario era: \"";
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Extract SQL from LLM response, stripping markdown fences.
 fn extract_sql(text: &str) -> String {
     let text = text.trim();
     if let Some(stripped) = text
@@ -63,245 +77,61 @@ fn extract_sql(text: &str) -> String {
     text.to_string()
 }
 
-#[allow(clippy::too_many_lines)]
-fn execute_sql(sql: &str, tasks: &[Task]) -> Vec<Task> {
-    let sql_lower = sql.trim().to_lowercase();
-    if !sql_lower.starts_with("select") {
-        return Vec::new();
+/// Validate SQL: must be a SELECT on tasks, add LIMIT if missing.
+fn prepare_sql(sql: &str) -> Result<String, String> {
+    let trimmed = sql.trim().trim_end_matches(';').trim();
+    let upper = trimmed.to_uppercase();
+
+    if !upper.starts_with("SELECT") {
+        return Err("only SELECT queries are allowed".into());
     }
 
-    let where_clause = sql_lower
-        .split("order by")
-        .next()
-        .unwrap_or("")
-        .split("limit")
-        .next()
-        .unwrap_or("")
-        .split("select * from tasks")
-        .last()
-        .unwrap_or("")
-        .trim();
-    let where_str = where_clause
-        .strip_prefix("where")
-        .unwrap_or(where_clause)
-        .trim();
-    let where_str = where_str
-        .strip_prefix('(')
-        .unwrap_or(where_str)
-        .strip_suffix(')')
-        .unwrap_or(where_str);
-
-    let order_clause = sql_lower
-        .split("order by")
-        .nth(1)
-        .and_then(|s| s.split("limit").next())
-        .map_or("", str::trim);
-    let limit_clause = sql_lower
-        .split("limit")
-        .nth(1)
-        .and_then(|s| s.split_whitespace().next())
-        .and_then(|s| s.parse::<usize>().ok());
-
-    let mut filtered: Vec<&Task> = tasks.iter().collect();
-
-    if !where_str.is_empty() {
-        let conditions = split_conditions(where_str);
-        filtered.retain(|task| conditions.iter().all(|cond| evaluate_condition(task, cond)));
-    }
-
-    if !order_clause.is_empty() {
-        let parts: Vec<&str> = order_clause.split_whitespace().collect();
-        let col = parts.first().copied().unwrap_or("");
-        let desc = parts.get(1).copied().unwrap_or("asc") == "desc";
-        sort_tasks(&mut filtered, col, desc);
-    }
-
-    if let Some(limit) = limit_clause {
-        filtered.truncate(limit);
-    }
-
-    filtered.into_iter().cloned().collect()
-}
-
-fn split_conditions(where_str: &str) -> Vec<String> {
-    let mut conditions = Vec::new();
-    let mut depth = 0;
-    let mut current = String::new();
-
-    for ch in where_str.chars() {
-        match ch {
-            '(' => {
-                depth += 1;
-                current.push(ch);
-            }
-            ')' => {
-                depth -= 1;
-                current.push(ch);
-            }
-            'a' | 'n' | 'd' if depth == 0 && current.trim().ends_with(" an") && ch == 'd' => {
-                let trimmed = current.trim_end();
-                if let Some(stripped) = trimmed.strip_suffix(" an") {
-                    let cond = stripped.trim().to_string();
-                    if !cond.is_empty() {
-                        conditions.push(cond);
-                    }
-                    current.clear();
-                } else {
-                    current.push(ch);
-                }
-            }
-            'o' | 'r' if depth == 0 && current.trim().ends_with(" o") && ch == 'r' => {
-                let trimmed = current.trim_end();
-                if let Some(stripped) = trimmed.strip_suffix(" o") {
-                    let cond = stripped.trim().to_string();
-                    if !cond.is_empty() {
-                        conditions.push(cond);
-                    }
-                    current.clear();
-                } else {
-                    current.push(ch);
-                }
-            }
-            _ => {
-                current.push(ch);
-            }
-        }
-    }
-
-    let remaining = current.trim().to_string();
-    if !remaining.is_empty() && remaining != "and" && remaining != "or" {
-        conditions.push(remaining);
-    }
-
-    conditions
-}
-
-fn evaluate_condition(task: &Task, condition: &str) -> bool {
-    let condition = condition.trim();
-
-    if let Some(not_cond) = condition.strip_prefix("not ") {
-        return !evaluate_condition(task, not_cond.trim());
-    }
-
-    let re = Regex::new(r"^(\w+)\s*(=|!=|>=|<=|>|<|like|ilike|in)\s*(.+)$").unwrap();
-    let Some(caps) = re.captures(condition) else {
-        return true;
-    };
-
-    let column = caps.get(1).unwrap().as_str();
-    let op = caps.get(2).unwrap().as_str();
-    let raw_value = caps.get(3).unwrap().as_str().trim().trim_matches('\'');
-
-    let task_val = get_column_value(task, column);
-    let cond_val = raw_value.to_lowercase();
-
-    match (op.to_lowercase().as_str(), &task_val) {
-        ("=", ColumnValue::String(s)) => s.to_lowercase() == cond_val,
-        ("=", ColumnValue::Bool(b)) => {
-            let wanted = cond_val == "true" || cond_val == "1";
-            *b == wanted
-        }
-        ("=", ColumnValue::Char(c)) => c.is_some_and(|c| c.to_lowercase().to_string() == cond_val),
-        ("=", ColumnValue::Date(d)) => d.is_some_and(|d| d.to_string() == cond_val),
-        ("=", ColumnValue::DateTime(d)) => {
-            d.is_some_and(|d| d.format("%Y-%m-%d").to_string() == cond_val)
-        }
-        ("=", ColumnValue::StringArray(arr)) => arr.contains(&cond_val),
-
-        ("!=", ColumnValue::String(s)) => s.to_lowercase() != cond_val,
-        ("!=", ColumnValue::Bool(b)) => {
-            let wanted = cond_val == "true" || cond_val == "1";
-            *b != wanted
-        }
-        ("!=", ColumnValue::Char(c)) => c.is_none_or(|c| c.to_lowercase().to_string() != cond_val),
-        ("!=", ColumnValue::Date(d)) => d.is_none_or(|d| d.to_string() != cond_val),
-
-        (">", ColumnValue::Date(d)) => {
-            let parsed = NaiveDate::parse_from_str(&cond_val, "%Y-%m-%d").ok();
-            d.is_some() && parsed.is_some() && d.unwrap() > parsed.unwrap()
-        }
-        (">", ColumnValue::DateTime(d)) => {
-            let parsed = NaiveDate::parse_from_str(&cond_val, "%Y-%m-%d")
-                .ok()
-                .map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc());
-            d.is_some() && parsed.is_some() && d.unwrap() > parsed.unwrap()
-        }
-        ("<", ColumnValue::Date(d)) => {
-            let parsed = NaiveDate::parse_from_str(&cond_val, "%Y-%m-%d").ok();
-            d.is_some() && parsed.is_some() && d.unwrap() < parsed.unwrap()
-        }
-        ("<", ColumnValue::DateTime(d)) => {
-            let parsed = NaiveDate::parse_from_str(&cond_val, "%Y-%m-%d")
-                .ok()
-                .map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc());
-            d.is_some() && parsed.is_some() && d.unwrap() < parsed.unwrap()
-        }
-        (">=", ColumnValue::Date(d)) => {
-            let parsed = NaiveDate::parse_from_str(&cond_val, "%Y-%m-%d").ok();
-            d.is_some() && parsed.is_some() && d.unwrap() >= parsed.unwrap()
-        }
-        ("<=", ColumnValue::Date(d)) => {
-            let parsed = NaiveDate::parse_from_str(&cond_val, "%Y-%m-%d").ok();
-            d.is_some() && parsed.is_some() && d.unwrap() <= parsed.unwrap()
-        }
-
-        ("like" | "ilike", ColumnValue::String(s)) => {
-            let pattern = cond_val.replace('%', ".*").replace('_', ".");
-            let re = Regex::new(&format!("(?i)^{pattern}$")).unwrap();
-            re.is_match(s)
-        }
-
-        _ => true,
-    }
-}
-
-enum ColumnValue {
-    String(String),
-    Bool(bool),
-    Char(Option<char>),
-    Date(Option<NaiveDate>),
-    DateTime(Option<DateTime<Utc>>),
-    StringArray(Vec<String>),
-}
-
-fn get_column_value(task: &Task, column: &str) -> ColumnValue {
-    match column {
-        "description" => ColumnValue::String(task.description.clone()),
-        "status" => ColumnValue::String(format!("{:?}", task.status).to_lowercase()),
-        "completed" => ColumnValue::Bool(task.completed),
-        "priority" => ColumnValue::Char(task.priority),
-        "created_at" => ColumnValue::DateTime(Some(task.created_at)),
-        "updated_at" => ColumnValue::DateTime(Some(task.updated_at)),
-        "completed_at" => ColumnValue::DateTime(task.completed_at),
-        "due_date" => ColumnValue::Date(task.due_date),
-        "project_ids" => {
-            ColumnValue::StringArray(task.project_ids.iter().map(ToString::to_string).collect())
-        }
-        "context_ids" => {
-            ColumnValue::StringArray(task.context_ids.iter().map(ToString::to_string).collect())
-        }
-        _ => ColumnValue::String(String::new()),
-    }
-}
-
-fn sort_tasks(tasks: &mut Vec<&Task>, column: &str, desc: bool) {
-    let cmp = |a: &Task, b: &Task| -> std::cmp::Ordering {
-        match column {
-            "created_at" => a.created_at.cmp(&b.created_at),
-            "updated_at" => a.updated_at.cmp(&b.updated_at),
-            "due_date" => a.due_date.cmp(&b.due_date),
-            "priority" => a.priority.cmp(&b.priority),
-            "description" => a.description.cmp(&b.description),
-            "status" => format!("{:?}", a.status).cmp(&format!("{:?}", b.status)),
-            _ => std::cmp::Ordering::Equal,
-        }
-    };
-    if desc {
-        tasks.sort_by(|a, b| cmp(b, a));
+    // Add LIMIT 100 if not present
+    if upper.contains("LIMIT") {
+        Ok(trimmed.to_string())
     } else {
-        tasks.sort_by(|a, b| cmp(a, b));
+        Ok(format!("{trimmed} LIMIT 100"))
     }
 }
+
+/// Parse a ParadeDB row into a Task, falling back to defaults for missing columns.
+fn row_to_task(row: &sqlx::postgres::PgRow) -> Task {
+    let status_str: String = row.try_get("status").unwrap_or_default();
+    let status = match status_str.to_lowercase().as_str() {
+        "inbox" => TaskStatus::Inbox,
+        "todo" => TaskStatus::Todo,
+        "doing" => TaskStatus::Doing,
+        "done" => TaskStatus::Done,
+        _ => TaskStatus::Someday,
+    };
+
+    Task {
+        id: row.try_get("id").unwrap_or_else(|_| Uuid::now_v7()),
+        completed: row.try_get("completed").unwrap_or(false),
+        priority: row
+            .try_get::<Option<String>, _>("priority")
+            .ok()
+            .flatten()
+            .and_then(|p| p.chars().next())
+            .filter(char::is_ascii_uppercase),
+        description: row.try_get("description").unwrap_or_default(),
+        project_ids: row.try_get("project_ids").unwrap_or_default(),
+        context_ids: row.try_get("context_ids").unwrap_or_default(),
+        status,
+        created_at: row
+            .try_get("created_at")
+            .unwrap_or_else(|_| chrono::Utc::now()),
+        updated_at: row
+            .try_get("updated_at")
+            .unwrap_or_else(|_| chrono::Utc::now()),
+        completed_at: row.try_get("completed_at").ok().flatten(),
+        due_date: row.try_get("due_date").ok().flatten(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Handler
+// ---------------------------------------------------------------------------
 
 #[instrument(skip(state, _user), fields(query = %req.query))]
 pub async fn handle_query(
@@ -332,17 +162,30 @@ pub async fn handle_query(
             )
         })?;
 
-    let sql = extract_sql(&sql_response);
+    let raw_sql = extract_sql(&sql_response);
+    let sql = prepare_sql(&raw_sql).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("invalid generated SQL: {e}: {raw_sql}"),
+        )
+    })?;
     tracing::info!(sql = %sql, "generated SQL");
 
-    // Step 2: Fetch all tasks from ParadeDB and execute SQL in-memory
-    let all_tasks = state.db.list("").await.map_err(|e| {
-        tracing::error!(error = %e, "list tasks for query failed");
-        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-    })?;
+    // Step 2: Execute SQL directly against ParadeDB
+    // Safety: we validated the SQL is SELECT-only and added LIMIT above
+    let rows = sqlx::query(AssertSqlSafe(sql.as_str()))
+        .fetch_all(state.db.pool())
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, sql = %sql, "ParadeDB query failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("database query failed: {e}"),
+            )
+        })?;
 
-    let results = execute_sql(&sql, &all_tasks);
-    tracing::info!(count = results.len(), "SQL executed");
+    let results: Vec<Task> = rows.iter().map(row_to_task).collect();
+    tracing::info!(count = results.len(), "ParadeDB query executed");
 
     // Step 3: Convert results to natural language
     let answer_prompt = format!(
@@ -395,6 +238,10 @@ fn format_results(tasks: &[Task]) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
+
+// ---------------------------------------------------------------------------
+// Route factory
+// ---------------------------------------------------------------------------
 
 pub fn query_routes(state: AuthState) -> axum::Router<AuthState> {
     axum::Router::new()

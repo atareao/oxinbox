@@ -65,6 +65,11 @@ impl ParadeDbRepository {
     }
 
     #[instrument(skip(self))]
+    pub fn pool(&self) -> &PgPool {
+        &self.pool
+    }
+
+    #[instrument(skip(self))]
     pub async fn list(&self, user_id: &str) -> Result<Vec<Task>, RepositoryError> {
         let rows = sqlx::query_as::<_, TaskRow>(
             "SELECT id, completed, priority, description, project_ids, context_ids, status, created_at, updated_at, completed_at, due_date FROM tasks WHERE user_id = $1 ORDER BY created_at DESC",
@@ -121,24 +126,30 @@ impl ParadeDbRepository {
         user_id: &str,
         query: &str,
         limit: i64,
-    ) -> Result<Vec<Task>, RepositoryError> {
-        let like = format!("%{query}%");
-        let rows = sqlx::query_as::<_, TaskRow>(
-            r"SELECT id, completed, priority, description, project_ids, context_ids, status, created_at, updated_at, completed_at, due_date
+    ) -> Result<Vec<(Task, f64)>, RepositoryError> {
+        let rows = sqlx::query_as::<_, TaskRowWithScore>(
+            r"SELECT id, completed, priority, description, project_ids, context_ids, status, created_at, updated_at, completed_at, due_date,
+                     paradedb.score(id) AS score
                FROM tasks
                WHERE user_id = $1
-                 AND (description ILIKE $2)
-               ORDER BY created_at DESC
+                 AND id @@@ paradedb.match('description', $2)
+               ORDER BY paradedb.score(id) DESC
                LIMIT $3",
         )
         .bind(user_id)
-        .bind(&like)
+        .bind(query)
         .bind(limit)
         .fetch_all(&self.pool)
         .await
         .map_err(RepositoryError::from)?;
 
-        Ok(rows.into_iter().map(TaskRow::into_task).collect())
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                let score = r.score;
+                (r.into_task(), score)
+            })
+            .collect())
     }
 
     #[instrument(skip(self))]

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use tracing::instrument;
 use uuid::Uuid;
 
+use crate::ai::task_builder;
 use crate::auth::{AuthState, AuthUser};
 use crate::core_types::{Context, Project, Task, TaskHistoryEntry};
 use crate::database::ParadeDbRepository;
@@ -73,31 +74,6 @@ pub struct SearchResult {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-fn task_embedding_text(task: &Task) -> String {
-    let mut parts = vec![task.description.clone()];
-    if let Some(p) = task.priority {
-        parts.push(format!("({p})"));
-    }
-    parts.join(" ")
-}
-
-async fn generate_and_store_embedding(
-    ai: &dyn crate::ai::AiProvider,
-    task: &Task,
-    db: &ParadeDbRepository,
-) {
-    let text = task_embedding_text(task);
-    match ai.embed(&text).await {
-        Ok(embedding) => {
-            let _ = db.update_embedding(task.id, &embedding).await;
-            tracing::debug!(task_id = %task.id, "embedding stored");
-        }
-        Err(e) => {
-            tracing::warn!(task_id = %task.id, error = %e, "embedding generation failed");
-        }
-    }
-}
 
 async fn auto_assign_context(
     ai: &dyn crate::ai::AiProvider,
@@ -290,7 +266,7 @@ pub async fn create_task(
     })?;
 
     if let Some(ai) = &state.ai_provider {
-        generate_and_store_embedding(ai.as_ref(), &task, &state.db).await;
+        task_builder::generate_and_store_embedding(ai.as_ref(), &task, &state.db).await;
     }
 
     tracing::info!(task_id = %created.id, "task created");
@@ -374,7 +350,7 @@ pub async fn update_task(
     })?;
 
     if let Some(ai) = &state.ai_provider {
-        generate_and_store_embedding(ai.as_ref(), &task, &state.db).await;
+        task_builder::generate_and_store_embedding(ai.as_ref(), &task, &state.db).await;
     }
 
     tracing::info!("task updated");
@@ -448,14 +424,19 @@ pub async fn search_tasks(
     let mut seen = std::collections::HashSet::new();
     let mut results = Vec::new();
 
-    for task in bm25_tasks {
+    for (task, bm25_score) in bm25_tasks {
         if seen.insert(task.id) {
-            results.push(SearchResult { task, score: 1.0 });
+            // BM25 scores are unbounded; normalize to [0, 1] range for RRF
+            let score = (bm25_score / (1.0 + bm25_score)).min(1.0);
+            results.push(SearchResult { task, score });
         }
     }
-    for (task, score) in vector_results {
+    for (task, vec_score) in vector_results {
         if seen.insert(task.id) {
-            results.push(SearchResult { task, score });
+            results.push(SearchResult {
+                task,
+                score: vec_score,
+            });
         }
     }
 
