@@ -1,2 +1,4 @@
 /target
 .env
+oxinbox.env
+frontend/dist/
