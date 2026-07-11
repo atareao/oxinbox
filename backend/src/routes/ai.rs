@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 use crate::auth::{AuthState, AuthUser};
-use crate::middleware::require_auth;
 use crate::core_types::{Context, Project, Task, TaskStatus, Uuid};
+use crate::middleware::require_auth;
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -102,7 +102,13 @@ pub async fn build_text_capture_prompt(
                     .unwrap_or_default()
             };
             let status = format!("{:?}", t.status).to_lowercase();
-            format!("  {}.{prio} {} ({}{}) — {status}", i + 1, t.description, proj, ctx_str,)
+            format!(
+                "  {}.{prio} {} ({}{}) — {status}",
+                i + 1,
+                t.description,
+                proj,
+                ctx_str,
+            )
         })
         .collect::<Vec<_>>()
         .join("\n");
@@ -184,9 +190,9 @@ async fn create_task_from_parsed(
     };
 
     // Parse due_date
-    let parsed_due = due_date.as_deref().and_then(|d| {
-        chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()
-    });
+    let parsed_due = due_date
+        .as_deref()
+        .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok());
 
     let task = Task {
         id: Uuid::now_v7(),

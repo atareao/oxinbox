@@ -72,10 +72,7 @@ pub async fn voice_handler(
 // Prompt builder
 // ---------------------------------------------------------------------------
 
-async fn build_enriched_system_prompt(
-    db: &ParadeDbRepository,
-    user_id: &str,
-) -> String {
+async fn build_enriched_system_prompt(db: &ParadeDbRepository, user_id: &str) -> String {
     let projects = db.list_projects().await.unwrap_or_default();
     let contexts = db.list_contexts().await.unwrap_or_default();
     let last_tasks = db.list(user_id).await.unwrap_or_default();
@@ -200,17 +197,12 @@ async fn create_task_from_voice(
         .filter(|c| c.is_ascii_uppercase() && ['A', 'B', 'C'].contains(c));
 
     // Parse due_date
-    let due_date = parsed
-        .due_date
-        .as_deref()
-        .and_then(|d| {
-            // Try full ISO first, then just date
-            chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
-                .ok()
-                .or_else(|| {
-                    chrono::NaiveDate::parse_from_str(d, "%Y-%m-%dT%H:%M:%S%.fZ").ok()
-                })
-        });
+    let due_date = parsed.due_date.as_deref().and_then(|d| {
+        // Try full ISO first, then just date
+        chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
+            .ok()
+            .or_else(|| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%dT%H:%M:%S%.fZ").ok())
+    });
 
     let task = Task {
         id: Uuid::now_v7(),

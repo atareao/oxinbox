@@ -14,9 +14,7 @@ pub struct VapidKeyResponse {
 }
 
 #[instrument(skip(state))]
-pub async fn vapid_key(
-    State(state): State<AuthState>,
-) -> Json<VapidKeyResponse> {
+pub async fn vapid_key(State(state): State<AuthState>) -> Json<VapidKeyResponse> {
     Json(VapidKeyResponse {
         public_key: state.push.public_key(),
         configured: state.push.is_configured(),

@@ -96,10 +96,12 @@ impl JwtValidator {
         let mut keys = Vec::new();
         for jwk in &resp.keys {
             if let (Some(n), Some(e)) = (&jwk.n, &jwk.e) {
-                let n_bytes = base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, n)
-                    .map_err(|e| format!("invalid JWK n: {e}"))?;
-                let e_bytes = base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, e)
-                    .map_err(|e| format!("invalid JWK e: {e}"))?;
+                let n_bytes =
+                    base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, n)
+                        .map_err(|e| format!("invalid JWK n: {e}"))?;
+                let e_bytes =
+                    base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, e)
+                        .map_err(|e| format!("invalid JWK e: {e}"))?;
                 let key = DecodingKey::from_rsa_raw_components(&n_bytes, &e_bytes);
                 keys.push(key);
             }
@@ -160,7 +162,9 @@ impl AuthState {
         let issuer = std::env::var("OIDC_ISSUER_URL").expect("OIDC_ISSUER_URL required");
         let client_id = std::env::var("OIDC_CLIENT_ID").expect("OIDC_CLIENT_ID required");
         Self {
-            oidc: Arc::new(OidcConfig::from_env().expect("OIDC_ISSUER_URL and OIDC_CLIENT_ID required")),
+            oidc: Arc::new(
+                OidcConfig::from_env().expect("OIDC_ISSUER_URL and OIDC_CLIENT_ID required"),
+            ),
             jwt_validator: Arc::new(JwtValidator::new(&issuer, &client_id)),
             ai_provider,
             db,
@@ -169,7 +173,11 @@ impl AuthState {
     }
 
     #[doc(hidden)]
-    pub fn test(ai_provider: Option<Arc<dyn AiProvider>>, db: Arc<ParadeDbRepository>, push: PushService) -> Self {
+    pub fn test(
+        ai_provider: Option<Arc<dyn AiProvider>>,
+        db: Arc<ParadeDbRepository>,
+        push: PushService,
+    ) -> Self {
         Self {
             oidc: Arc::new(OidcConfig {
                 issuer: "http://localhost:8765".into(),

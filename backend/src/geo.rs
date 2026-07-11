@@ -47,7 +47,10 @@ impl GeoService {
 
     #[instrument(skip(self))]
     pub async fn update_location(&self, user_id: &str, loc: UserLocation) {
-        self.locations.write().await.insert(user_id.to_string(), loc);
+        self.locations
+            .write()
+            .await
+            .insert(user_id.to_string(), loc);
         tracing::info!(user_id, "location updated");
     }
 
